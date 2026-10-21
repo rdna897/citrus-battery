@@ -52,6 +52,13 @@ final class IOSDeviceMonitor: ObservableObject {
         }
     }
 
+    #if DEBUG
+    /// Documentation data without discovery, polling or network access.
+    init(sampleDevices: [TrackedDevice]) {
+        devices = sampleDevices
+    }
+    #endif
+
     func device(udid: String) -> TrackedDevice? {
         devices.first { $0.udid == udid }
     }

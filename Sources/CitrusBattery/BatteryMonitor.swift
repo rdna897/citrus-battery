@@ -14,7 +14,7 @@ struct PowerSample: Identifiable, Equatable {
 final class BatteryMonitor: ObservableObject {
     @Published private(set) var battery: MacBatterySnapshot?
     @Published private(set) var power = PowerReadings()
-    @Published private(set) var macInfo = MacInfo.read()
+    @Published private(set) var macInfo: MacInfo
     @Published private(set) var marketingName: String?
     /// System power over the last two minutes, for the chart.
     @Published private(set) var powerHistory: [PowerSample] = []
@@ -30,6 +30,7 @@ final class BatteryMonitor: ObservableObject {
     private static let historyWindow: TimeInterval = 120
 
     init() {
+        macInfo = MacInfo.read()
         interval = UserDefaults.standard.updateInterval
         refresh()
         schedule()
@@ -49,6 +50,20 @@ final class BatteryMonitor: ObservableObject {
             MainActor.assumeIsolated { self?.refreshChargeLimit() }
         }
     }
+
+    #if DEBUG
+    /// Static readings for documentation captures; no hardware reads or timers.
+    init(sampleBattery: MacBatterySnapshot, info: MacInfo, name: String,
+         power: PowerReadings, history: [PowerSample], limit: ChargeLimitStatus) {
+        self.macInfo = info
+        self.battery = sampleBattery
+        self.marketingName = name
+        self.power = power
+        self.powerHistory = history
+        self.chargeLimit = limit
+        self.interval = .delayed
+    }
+    #endif
 
     /// Charging policy changes rarely and reading it involves XPC, so it is
     /// polled separately from the live readings, off the main thread.

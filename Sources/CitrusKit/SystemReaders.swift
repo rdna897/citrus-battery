@@ -100,6 +100,16 @@ public struct MacInfo: Sendable, Equatable {
     public var osVersion: String
     public var bootDate: Date?
 
+    public init(modelIdentifier: String, modelNumber: String? = nil, serialNumber: String? = nil,
+                chip: String? = nil, osVersion: String, bootDate: Date? = nil) {
+        self.modelIdentifier = modelIdentifier
+        self.modelNumber = modelNumber
+        self.serialNumber = serialNumber
+        self.chip = chip
+        self.osVersion = osVersion
+        self.bootDate = bootDate
+    }
+
     /// When this Mac was made, for Intel Macs whose serial encodes it.
     public var manufactureDate: DateComponents? {
         serialNumber.flatMap { BatteryOrigin.macManufactureDate(serial: $0, modelIdentifier: modelIdentifier) }

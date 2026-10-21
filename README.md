@@ -10,6 +10,16 @@ is included.
 
 > **Version 1.1.** Data availability varies by hardware and OS version.
 
+<p align="center">
+  <a href="assets/screenshots/mac-dashboard.png">
+    <img src="assets/screenshots/mac-dashboard.png" alt="Citrus Battery's Mac dashboard with sample battery health, charge, temperature and power readings" width="1100">
+  </a>
+  <br>
+  <em>Your Mac's battery, at a glance.</em>
+  <br>
+  <sub>All screenshots use fictional devices and sample data.</sub>
+</p>
+
 ## Download and install
 
 Open the [latest GitHub release](https://github.com/rdna897/citrus-battery/releases/latest)
@@ -28,6 +38,33 @@ From version 1.1, Citrus Battery checks GitHub for updates daily, downloads them
 automatically and installs them when the app quits. Use **Check for Updates…**
 to update and relaunch immediately, or change this behavior in **Settings → Updates**.
 Users of version 1.0.1 or earlier need to install 1.1 manually once.
+
+## A closer look
+
+Click any screenshot to see it at full resolution.
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/iphone.png"><img src="assets/screenshots/iphone.png" alt="Sample iPhone battery health and charging details, with an iPad also listed in the sidebar" width="100%"></a>
+      <p><strong>iPhone &amp; iPad</strong><br><sub>Charge, health and battery details over USB or Wi-Fi.</sub></p>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/history.png"><img src="assets/screenshots/history.png" alt="Sample battery history with six months of health readings and a sortable records table" width="100%"></a>
+      <p><strong>History over time</strong><br><sub>Follow battery health with automatic records and backups.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/lifetime.png"><img src="assets/screenshots/lifetime.png" alt="Sample battery lifetime report showing operating time, temperature extremes and calibration statistics" width="100%"></a>
+      <p><strong>Battery lifetime</strong><br><sub>Explore operating hours, temperature extremes and calibration.</sub></p>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/advanced.png"><img src="assets/screenshots/advanced.png" alt="Advanced Viewer with sample Mac hardware, expanded SSD health, display and USB information" width="100%"></a>
+      <p><strong>Advanced hardware details</strong><br><sub>Inspect battery data, SSD health, displays and USB devices.</sub></p>
+    </td>
+  </tr>
+</table>
 
 ## Features
 
@@ -165,6 +202,16 @@ installation and relaunch using disposable apps and an ephemeral signing key:
 swift package resolve
 python3 scripts/test-updater.py
 ```
+
+Regenerate the README screenshots on macOS with:
+
+```bash
+./scripts/readme-screenshots.sh
+```
+
+This renders the actual app views with fictional readings and an in-memory
+history database. It does not read connected devices or your saved history, and
+the sample-data renderer is excluded from release builds.
 
 ## Layout
 

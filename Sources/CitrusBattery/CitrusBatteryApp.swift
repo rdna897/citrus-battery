@@ -10,6 +10,19 @@ enum Entry {
             try? String(ProcessInfo.processInfo.processIdentifier).write(toFile: path, atomically: true, encoding: .utf8)
         }
         let arguments = CommandLine.arguments
+        #if DEBUG
+        if let index = arguments.firstIndex(of: "--readme-screenshots"), index + 1 < arguments.count {
+            MainActor.assumeIsolated {
+                do {
+                    try ReadmeScreenshots.render(to: URL(fileURLWithPath: arguments[index + 1]))
+                } catch {
+                    FileHandle.standardError.write(Data("Screenshot rendering failed: \(error)\n".utf8))
+                    exit(1)
+                }
+            }
+            return
+        }
+        #endif
         if arguments.contains("--notification-smoke-test") {
             MainActor.assumeIsolated {
                 let monitor = BatteryMonitor()

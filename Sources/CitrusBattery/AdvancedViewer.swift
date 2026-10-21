@@ -9,6 +9,9 @@ enum AdvancedTarget {
 
 struct AdvancedViewer: View {
     let target: String
+    #if DEBUG
+    private var usesSampleData = false
+    #endif
     @EnvironmentObject private var monitor: BatteryMonitor
     @EnvironmentObject private var iosDevices: IOSDeviceMonitor
 
@@ -18,6 +21,19 @@ struct AdvancedViewer: View {
     @ViewState private var selection = Set<InfoNode.ID>()
     /// Summary sections start open; raw battery registries start closed.
     @ViewState private var expanded: Set<InfoNode.ID> = ["Mac", "Storage", "Displays", "Device"]
+
+    init(target: String) {
+        self.target = target
+    }
+
+    #if DEBUG
+    init(sampleSections: [InfoNode]) {
+        target = AdvancedTarget.mac
+        usesSampleData = true
+        _sections = ViewState(initialValue: sampleSections)
+        _expanded = ViewState(initialValue: Set(sampleSections.flatMap { [$0.id] + ($0.children ?? []).map(\.id) }))
+    }
+    #endif
 
     var body: some View {
         Group {
@@ -73,6 +89,9 @@ struct AdvancedViewer: View {
     }
 
     private func load() {
+        #if DEBUG
+        guard !usesSampleData else { return }
+        #endif
         guard !loading else { return }
         loading = true
         if target == AdvancedTarget.mac {
