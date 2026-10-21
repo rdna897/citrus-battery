@@ -24,14 +24,14 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Catch accidental links to libraries that only exist on the build machine.
 for binary in "$APP/Contents/MacOS/CitrusBattery" "$APP/Contents/Frameworks"/*.dylib; do
-    if otool -L "$binary" | tail -n +2 | awk '{ print $1 }' | grep -Eq '^(/opt/homebrew/|/usr/local/)'; then
+    if otool -L "$binary" | tail -n +2 | awk '{ print $1 }' | grep -E '^(/opt/homebrew/|/usr/local/)' >/dev/null; then
         echo "error: $binary still links to Homebrew outside the app bundle" >&2
         exit 1
     fi
     lipo -verify_arch "$ARCH" "$binary"
 done
 codesign --verify --deep --strict "$APP"
-if ! codesign -dvv "$APP" 2>&1 | grep -q '^Signature=adhoc$'; then
+if ! codesign -dvv "$APP" 2>&1 | grep '^Signature=adhoc$' >/dev/null; then
     echo "error: expected an ad hoc signature" >&2
     exit 1
 fi
