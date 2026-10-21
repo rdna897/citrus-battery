@@ -20,8 +20,9 @@ does, including the features it sells as "Plus". Nothing is paywalled.
 - Charge limits: macOS Charge Limit and Optimized Battery Charging, plus running
   third-party limiters, with advice where a limit can skew reported capacity.
 - History: SmartSave records the battery about once an hour when it changes (per-device
-  switch), History window with a health chart, sortable table, copy, delete, and JSON
-  backup export/import. Stored in `~/Library/Application Support/Citrus Battery/`.
+  switch), History window with a health chart, sortable table, copy, delete, JSON
+  backup export/import, and import of coconutBattery backups (`.ccba`, needs
+  coconutBattery installed because the file is encrypted with a key built into it). Stored in `~/Library/Application Support/Citrus Battery/`.
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
 - Works on both Apple Silicon and Intel register layouts.

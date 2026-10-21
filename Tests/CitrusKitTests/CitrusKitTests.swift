@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import CitrusKit
@@ -306,5 +307,75 @@ struct FakeSMC: SMCReading {
         #expect(!SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, cycles: 47), of: saved, calendar: calendar))
         // Next day.
         #expect(!SmartSavePolicy.isDuplicate(Self.entry(20, hour: 9), of: saved, calendar: calendar))
+    }
+}
+
+@Suite struct CoconutBatteryImportTests {
+    /// Builds a backup the way coconutBattery does: JSON → LZFSE → AES-GCM.
+    static func makeBackup(_ records: [[String: Any]], key: SymmetricKey) throws -> Data {
+        let json = try JSONSerialization.data(withJSONObject: records)
+        let compressed = try (json as NSData).compressed(using: .lzfse) as Data
+        return try AES.GCM.seal(compressed, using: key).combined!
+    }
+
+    nonisolated(unsafe) static let record: [String: Any] = [
+        "Data.Version": "4.0.0", "Data.Type": "Mac", "Data.SnapshotDate": 1760824767.598602,
+        "Device.Serial": "MAC1", "Device.Name": "Test MacBook Air", "Device.Model": "Mac16,12",
+        "Device.OSVersion": "26.0.1", "Battery.Serial": "F8Y", "Battery.CycleCount": 2,
+        "Battery.DC": 4629, "Battery.FCC": 4641, "Battery.Raw": "ignored", "Device.Custom": "custom",
+    ]
+
+    @Test func decodesWithMatchingKeyAmongCandidates() throws {
+        let key = SymmetricKey(size: .bits256)
+        let backup = try Self.makeBackup([Self.record], key: key)
+        let entries = try CoconutBatteryBackup.entries(
+            from: backup, keyCandidates: [SymmetricKey(size: .bits256), key])
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.deviceType == .mac)
+        #expect(entry.deviceSerial == "MAC1")
+        #expect(entry.cycleCount == 2)
+        #expect(entry.designCapacity == 4629)
+        #expect(entry.fullChargeCapacity == 4641)
+        #expect(entry.osVersion == "26.0.1")
+        #expect(entry.date.timeIntervalSince1970 == 1760824767.598602)
+        #expect(entry.comment == "Imported from coconutBattery 4.0.0")
+    }
+
+    @Test func wrongKeyIsReported() throws {
+        let backup = try Self.makeBackup([Self.record], key: SymmetricKey(size: .bits256))
+        #expect(throws: CoconutBatteryBackup.ImportError.self) {
+            try CoconutBatteryBackup.entries(from: backup, keyCandidates: [SymmetricKey(size: .bits256)])
+        }
+    }
+
+    @Test func findsBase64KeysInBinary() {
+        let key = Data((0..<32).map { UInt8($0) })
+        var binary = Data([0, 1, 2]) + Data("not-a-key".utf8) + Data([0])
+        binary += Data(key.base64EncodedString().utf8) + Data([0, 0])
+        binary += Data("aGVsbG8=".utf8) + Data([0]) // decodes, but not 32 bytes
+        let candidates = CoconutBatteryBackup.keyCandidates(in: binary)
+        #expect(candidates.count == 1)
+        #expect(candidates.first?.withUnsafeBytes { Data($0) } == key)
+    }
+
+    @Test func importSkipsDuplicates() throws {
+        let store = try HistoryStore(url: nil)
+        let entries = [CoconutBatteryBackup.entry(from: Self.record)!]
+        try #expect(store.importEntries(entries) == 1)
+        try #expect(store.importEntries(entries) == 0)
+    }
+}
+
+@Suite struct CoconutBatterySanitizingTests {
+    @Test func percentageAndMissingCapacitiesAreDropped() {
+        var record = CoconutBatteryImportTests.record
+        record["Battery.FCC"] = 100
+        record["Battery.DC"] = -1
+        let entry = CoconutBatteryBackup.entry(from: record)
+        #expect(entry?.fullChargeCapacity == nil)
+        #expect(entry?.designCapacity == nil)
+        #expect(entry?.cycleCount == 2)
+        #expect(entry?.healthFraction == nil)
     }
 }

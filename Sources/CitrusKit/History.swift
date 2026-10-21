@@ -313,11 +313,19 @@ public final class HistoryStore: @unchecked Sendable {
         guard let backup = try? decoder.decode(Backup.self, from: data),
               backup.format == "citrus-battery-history"
         else { throw HistoryError.unreadableBackup }
+        return try importEntries(backup.entries)
+    }
 
-        let existing = Set(try entries().map { "\($0.deviceSerial)|\(Int($0.date.timeIntervalSince1970))" })
+    /// Adds entries, skipping ones already present (same device and second).
+    /// Returns the number added.
+    @discardableResult
+    public func importEntries(_ newEntries: [HistoryEntry]) throws -> Int {
+        func key(_ entry: HistoryEntry) -> String {
+            "\(entry.deviceSerial)|\(Int(entry.date.timeIntervalSince1970))"
+        }
+        var existing = Set(try entries().map(key))
         var added = 0
-        for var entry in backup.entries
-        where !existing.contains("\(entry.deviceSerial)|\(Int(entry.date.timeIntervalSince1970))") {
+        for var entry in newEntries where existing.insert(key(entry)).inserted {
             entry.id = 0
             try insert(entry)
             added += 1

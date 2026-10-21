@@ -14,6 +14,7 @@ struct HistoryView: View {
     @ViewState private var exporting = false
     @ViewState private var exportDocument = BackupDocument(data: Data())
     @ViewState private var importing = false
+    @ViewState private var importingCoconut = false
     @ViewState private var importMessage: String?
 
     var body: some View {
@@ -62,6 +63,21 @@ struct HistoryView: View {
                 if let data = try? Data(contentsOf: url) {
                     let added = history.importBackup(data)
                     importMessage = "Imported \(added) entr\(added == 1 ? "y" : "ies")."
+                }
+            case let .failure(error):
+                history.reportError(error.localizedDescription)
+            }
+        }
+        .fileImporter(isPresented: $importingCoconut,
+                      allowedContentTypes: [UTType(filenameExtension: "ccba") ?? .data]) { result in
+            switch result {
+            case let .success(url):
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                guard let data = try? Data(contentsOf: url) else { return }
+                let added = history.importCoconutBatteryBackup(data)
+                if history.lastError == nil {
+                    importMessage = "Imported \(added) entr\(added == 1 ? "y" : "ies") from coconutBattery."
                 }
             case let .failure(error):
                 history.reportError(error.localizedDescription)
@@ -234,6 +250,7 @@ struct HistoryView: View {
                     exporting = true
                 }
                 Button("Import Backup…") { importing = true }
+                Button("Import coconutBattery Backup…") { importingCoconut = true }
                 Divider()
                 Button("Delete All History for This Device…", role: .destructive) { confirmingDeleteAll = true }
                     .disabled(selectedDevice == nil)

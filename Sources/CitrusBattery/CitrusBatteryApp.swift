@@ -9,11 +9,27 @@ enum Entry {
             DiagnosticDump.print()
             return
         }
+        if let index = arguments.firstIndex(of: "--import-coconutbattery"), index + 1 < arguments.count {
+            importCoconutBattery(path: arguments[index + 1])
+            return
+        }
         if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
             MainActor.assumeIsolated { Snapshot.render(to: URL(fileURLWithPath: arguments[index + 1])) }
             return
         }
         CitrusBatteryApp.main()
+    }
+}
+
+/// `CitrusBattery --import-coconutbattery backup.ccba` adds a coconutBattery backup to the history.
+private func importCoconutBattery(path: String) {
+    do {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let entries = try CoconutBatteryBackup.entries(from: data)
+        let added = try HistoryStore().importEntries(entries)
+        print("Read \(entries.count) entries; added \(added) (others were already in the history).")
+    } catch {
+        print("Import failed: \(error.localizedDescription)")
     }
 }
 
