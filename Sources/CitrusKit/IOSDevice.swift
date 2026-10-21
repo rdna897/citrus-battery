@@ -88,14 +88,31 @@ public enum IOSDeviceReader {
     }
 
     /// Reads one device. Blocking (network round trips); call off the main thread.
+    ///
+    /// For WiFi devices whose usbmuxd address doesn't answer, retries at the
+    /// device's current IPv4 address, found on Bonjour by its WiFi MAC address
+    /// (remembered from an earlier reading).
     public static func read(_ listing: Listing) -> IOSDeviceStatus {
         var payload = cid_payload()
-        let status = cid_read(listing.udid, listing.connection == .wifi, &payload)
+        // CITRUS_FORCE_IPV4=1 skips usbmuxd's address to exercise the fallback.
+        let forceFallback = ProcessInfo.processInfo.environment["CITRUS_FORCE_IPV4"] != nil
+        var status = forceFallback && listing.connection == .wifi
+            ? CID_NOT_FOUND : cid_read(listing.udid, listing.connection == .wifi, &payload)
         defer { cid_free_payload(&payload) }
+
+        if listing.connection == .wifi, status == CID_NOT_FOUND || status == CID_ERROR,
+           let mac = KnownDevices.wifiAddress(for: listing.udid),
+           let ipv4 = resolveIPv4(wifiAddress: mac) {
+            cid_free_payload(&payload)
+            status = cid_read_at(listing.udid, ipv4, &payload)
+        }
 
         switch status {
         case CID_OK:
             guard let info = plist(payload.info, payload.info_length) else { return .unavailable }
+            if let mac = info["WiFiAddress"] as? String {
+                KnownDevices.remember(wifiAddress: mac, for: listing.udid)
+            }
             return .ready(IOSDeviceSnapshot(
                 udid: listing.udid, connection: listing.connection, info: info,
                 battery: plist(payload.battery, payload.battery_length),
@@ -105,6 +122,21 @@ public enum IOSDeviceReader {
         case CID_LOCKED: return .locked
         default: return .unavailable
         }
+    }
+
+    /// Browses briefly for WiFi-connectable devices. Besides finding nothing in
+    /// particular, this makes macOS ask for Local Network access, which usbmuxd
+    /// requires before it lists WiFi devices to an app.
+    public static func requestLocalNetworkAccess() {
+        var buffer = [CChar](repeating: 0, count: 64)
+        _ = cid_resolve_ipv4("00:00:00:00:00:00", &buffer, Int32(buffer.count), 1500)
+    }
+
+    /// The device's current IPv4 address from its Bonjour announcement.
+    public static func resolveIPv4(wifiAddress: String) -> String? {
+        var buffer = [CChar](repeating: 0, count: 64)
+        guard cid_resolve_ipv4(wifiAddress.lowercased(), &buffer, Int32(buffer.count), 2000) else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     /// The undecoded replies (lockdown info, IORegistry, MobileGestalt), for diagnostics.
@@ -121,6 +153,23 @@ public enum IOSDeviceReader {
         guard let bytes, length > 0 else { return nil }
         let data = Data(bytes: bytes, count: Int(length))
         return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
+    }
+}
+
+/// WiFi MAC addresses of devices read before, keyed by UDID, so a WiFi device
+/// can be found on Bonjour when usbmuxd's address for it is stale.
+public enum KnownDevices {
+    private static let key = "knownDeviceWiFiAddresses"
+
+    public static func wifiAddress(for udid: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: key) as? [String: String])?[udid]
+    }
+
+    public static func remember(wifiAddress: String, for udid: String) {
+        var known = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+        guard known[udid] != wifiAddress else { return }
+        known[udid] = wifiAddress
+        UserDefaults.standard.set(known, forKey: key)
     }
 }
 

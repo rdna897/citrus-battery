@@ -125,7 +125,9 @@ struct IOSDetailContent: View {
                     InfoRow("Charge cycles", battery.cycleCount.map(String.init))
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     InfoRow(battery.isCharging ? "Charging with" : "Discharging with",
-                            battery.batteryPowerWatts.map { String(format: "%.1f W", abs($0)) }, hidesWhenEmpty: true)
+                            // A zero reading means the current wasn't reported (common over WiFi).
+                            battery.batteryPowerWatts.flatMap { abs($0) < 0.05 ? nil : String(format: "%.1f W", abs($0)) },
+                            hidesWhenEmpty: true)
                     InfoRow("Charger", battery.adapter?.watts.flatMap { $0 > 0 ? "\($0) W" : nil }, hidesWhenEmpty: true)
                 }
             }

@@ -45,6 +45,7 @@ final class IOSDeviceMonitor: ObservableObject {
     private var timer: Timer?
 
     init() {
+        Task.detached(priority: .utility) { IOSDeviceReader.requestLocalNetworkAccess() }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
@@ -62,8 +63,16 @@ final class IOSDeviceMonitor: ObservableObject {
         Task.detached(priority: .utility) {
             let listings = IOSDeviceReader.connectedDevices()
             var results: [(IOSDeviceReader.Listing, IOSDeviceStatus)] = []
+            let debug = ProcessInfo.processInfo.environment["CITRUS_DEBUG_DEVICES"] != nil
             for listing in listings {
-                results.append((listing, IOSDeviceReader.read(listing)))
+                let status = IOSDeviceReader.read(listing)
+                if debug {
+                    FileHandle.standardError.write(Data("device \(listing.udid) \(listing.connection) → \(status)\n".utf8))
+                }
+                results.append((listing, status))
+            }
+            if debug, listings.isEmpty {
+                FileHandle.standardError.write(Data("no devices listed\n".utf8))
             }
             await MainActor.run { [weak self] in self?.apply(results) }
         }

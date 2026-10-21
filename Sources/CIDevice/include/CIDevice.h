@@ -43,4 +43,15 @@ cid_status cid_read(const char *udid, bool network, cid_payload *payload);
 
 void cid_free_payload(cid_payload *payload);
 
+/// Reads a WiFi device at an explicit IPv4 address instead of the address usbmuxd
+/// reports. macOS's usbmuxd can hold a stale IPv6 link-local address for a device
+/// (connections then fail with "No route to host") while the device is reachable
+/// at its current IPv4 address. Only supported with libimobiledevice 1.4.0, the
+/// version bundled with the app; returns CID_ERROR otherwise.
+cid_status cid_read_at(const char *udid, const char *ipv4, cid_payload *payload);
+
+/// Finds the device announcing itself on Bonjour (_apple-mobdev2._tcp) with the
+/// given WiFi MAC address and writes its IPv4 address. Returns true on success.
+bool cid_resolve_ipv4(const char *wifi_mac, char *address, int address_length, int timeout_ms);
+
 #endif

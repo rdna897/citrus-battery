@@ -70,6 +70,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Citrus Battery finds iPhones and iPads on your network to read their battery when they're connected over WiFi.</string>
+    <key>NSBonjourServices</key>
+    <array><string>_apple-mobdev2._tcp</string></array>
     <key>NSHumanReadableCopyright</key><string>Free software under the GNU GPL v3.</string>
 </dict>
 </plist>
