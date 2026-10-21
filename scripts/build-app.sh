@@ -24,7 +24,9 @@ cp "$BIN" "$APP/Contents/MacOS/CitrusBattery"
 # into Contents/Frameworks and point every reference at the bundled copy, so the
 # app runs on Macs without Homebrew.
 FRAMEWORKS="$APP/Contents/Frameworks"
-mkdir -p "$FRAMEWORKS"
+LICENSES="$APP/Contents/Resources/Licenses"
+mkdir -p "$FRAMEWORKS" "$LICENSES"
+cp LICENSE "$LICENSES/CitrusBattery-GPL-3.0.txt"
 is_external() { [[ "$1" == /opt/homebrew/* || "$1" == /usr/local/* ]]; }
 bundle_dependencies() {
     local file="$1"
@@ -33,7 +35,18 @@ bundle_dependencies() {
         local name
         name="$(basename "$dep")"
         if [ ! -f "$FRAMEWORKS/$name" ]; then
-            cp "$(realpath "$dep")" "$FRAMEWORKS/$name"
+            local original prefix notices
+            original="$(realpath "$dep")"
+            prefix="$(dirname "$(dirname "$original")")"
+            notices="$LICENSES/$(basename "$(dirname "$prefix")")-$(basename "$prefix")"
+            mkdir -p "$notices"
+            for notice in "$prefix"/COPYING* "$prefix"/LICENSE* "$prefix"/NOTICE* "$prefix"/AUTHORS* "$prefix"/sbom.spdx.json "$prefix"/INSTALL_RECEIPT.json; do
+                [ ! -f "$notice" ] || cp "$notice" "$notices/"
+            done
+            if [ -d "$prefix/.brew" ]; then
+                cp -R "$prefix/.brew" "$notices/formula"
+            fi
+            cp "$original" "$FRAMEWORKS/$name"
             chmod u+w "$FRAMEWORKS/$name"
             install_name_tool -id "@executable_path/../Frameworks/$name" "$FRAMEWORKS/$name" 2>/dev/null
             bundle_dependencies "$FRAMEWORKS/$name"
@@ -45,6 +58,15 @@ bundle_dependencies "$APP/Contents/MacOS/CitrusBattery"
 for lib in "$FRAMEWORKS"/*.dylib; do
     [ -e "$lib" ] && codesign --force --sign - "$lib" >/dev/null
 done
+
+# Homebrew libraries may require a newer OS than the Swift deployment target.
+# Declare the highest requirement from the executable and every bundled library.
+MIN_MACOS="$(otool -l "$APP/Contents/MacOS/CitrusBattery" "$FRAMEWORKS"/*.dylib | awk '
+    $1 == "cmd" { command = $2 }
+    $1 == "minos" { print $2 }
+    command == "LC_VERSION_MIN_MACOSX" && $1 == "version" { print $2 }
+' | sort -V | tail -n 1)"
+[ -n "$MIN_MACOS" ] || { echo "error: cannot determine minimum macOS version" >&2; exit 1; }
 
 # Render the app icon with transparent corners at each required resolution.
 WORK="$(mktemp -d)"
@@ -71,7 +93,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${BUILD}</string>
-    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key>
@@ -88,6 +110,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc signature so Gatekeeper treats the bundle as a single unit locally.
+# Ad hoc signing seals the bundle without an Apple account. It does not identify
+# the developer to Gatekeeper or provide Apple notarization.
 codesign --force --sign - "$APP" >/dev/null
-echo "Built $APP"
+codesign --verify --deep --strict "$APP"
+echo "Built $APP (macOS $MIN_MACOS or later, ad hoc signed)"

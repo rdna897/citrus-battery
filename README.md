@@ -8,8 +8,22 @@ It keeps a history of how capacity changes over time, and records everything the
 battery's gauge has logged over its life. It's free, open source, and every feature
 is included.
 
-> **Status:** early development. There are no published builds yet; build it from
-> source (see below).
+> **Status:** early development. GitHub releases are prereleases; data availability
+> varies by hardware and OS version.
+
+## Download and install
+
+Get the Apple Silicon (`arm64`) or Intel (`x86_64`) ZIP from
+[GitHub Releases](https://github.com/rdna897/citrus-battery/releases).
+The filename states the minimum macOS version for that build. Extract it and
+drag **Citrus Battery.app** into **Applications**. Homebrew is not needed to run it.
+
+Releases use **ad hoc signing** and are **not notarized by Apple**. If macOS blocks
+the first launch, and you trust the release, try opening the app and then use
+**System Settings → Privacy & Security → Open Anyway**. See the full
+[installation instructions](docs/INSTALL.md) and
+[Apple's first-launch guidance](https://support.apple.com/en-gb/102445).
+Updates are installed manually.
 
 ## Features
 
@@ -92,7 +106,8 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 
 ## Building
 
-Requires macOS 13 or later, Swift 6 (Xcode or just the Command Line Tools),
+The source targets macOS 13 or later. Building requires Swift 6 (Xcode or the
+Command Line Tools), Python 3,
 libimobiledevice from Homebrew for iPhone/iPad support, and librsvg to render the
 app icon:
 
@@ -101,12 +116,18 @@ brew install libimobiledevice librsvg
 ```
 
 `scripts/build-app.sh` copies libimobiledevice and its dependencies into the app
-bundle, so the built app runs on Macs without Homebrew.
+bundle, so the built app runs on Macs without Homebrew. The final app's minimum
+macOS version is determined by the executable and bundled libraries; newer
+Homebrew builds can raise it above macOS 13.
 
 ```bash
 swift build                      # debug build
 ./scripts/build-app.sh           # release build → dist/Citrus Battery.app
+VERSION=0.1.0 ./scripts/package-release.sh  # ZIPs, matching sources and checksums
 ```
+
+Packaging needs a clean, committed checkout. See [releasing](docs/RELEASING.md)
+for the GitHub workflow and publishing instructions.
 
 Command-line helpers:
 
