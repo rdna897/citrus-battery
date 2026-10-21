@@ -77,9 +77,9 @@ def test():
             payload = work / 'payload'
             payload.mkdir()
             new_app = make_app(payload, '2.0')
-            # The same enclosing directory structure used by public app ZIPs.
+            # Put the app at the ZIP root, as public application ZIPs do.
             archive = work / 'update.zip'
-            run('ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', payload, archive)
+            run('ditto', '-c', '-k', '--sequesterRsrc', payload, archive)
             original_archive = archive.read_bytes()
             signature = run(SPARKLE / 'bin/sign_update', '--ed-key-file', key, '-p', archive).stdout.decode().strip()
             for case in ['no-update', 'incompatible-os', 'tampered-feed', 'tampered-archive', 'install']:

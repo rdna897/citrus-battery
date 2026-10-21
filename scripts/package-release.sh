@@ -36,12 +36,13 @@ mkdir "$WORK/$NAME"
 ditto "$APP" "$WORK/$NAME/Citrus Battery.app"
 cp docs/INSTALL.md "$WORK/$NAME/INSTALL.md"
 cp LICENSE "$WORK/$NAME/LICENSE"
-ditto -c -k --sequesterRsrc --keepParent "$WORK/$NAME" "dist/$NAME.zip"
+# Put the app at the ZIP root so Sparkle's appcast generator can inspect it.
+ditto -c -k --sequesterRsrc "$WORK/$NAME" "dist/$NAME.zip"
 
 # Validate the archive after extraction and launch it from a different path.
 mkdir "$WORK/unpacked"
 ditto -x -k "dist/$NAME.zip" "$WORK/unpacked"
-EXTRACTED_APP="$WORK/unpacked/$NAME/Citrus Battery.app"
+EXTRACTED_APP="$WORK/unpacked/Citrus Battery.app"
 codesign --verify --deep --strict "$EXTRACTED_APP"
 "$EXTRACTED_APP/Contents/MacOS/CitrusBattery" --dump > "$WORK/launch.txt"
 test -s "$WORK/launch.txt"
