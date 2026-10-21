@@ -8,7 +8,7 @@ It keeps a history of how capacity changes over time, and records everything the
 battery's gauge has logged over its life. It's free, open source, and every feature
 is included.
 
-> **Version 1.1.** Data availability varies by hardware and OS version.
+> **Version 1.1.1.** Data availability varies by hardware and OS version.
 
 <p align="center">
   <a href="assets/screenshots/mac-dashboard.png">
