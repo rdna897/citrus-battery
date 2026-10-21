@@ -19,7 +19,7 @@ struct ContentView: View {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("This Mac")
-                            Text(monitor.marketingName ?? monitor.macInfo.modelIdentifier)
+                            Text(shortModelName)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -46,7 +46,7 @@ struct ContentView: View {
                         .tag(SidebarItem.history)
                 }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
             detail
         }
@@ -72,6 +72,12 @@ struct ContentView: View {
         case let .advanced(target): openWindow(id: "advanced", value: target)
         case nil: break
         }
+    }
+
+    /// "MacBook Air (13-inch, M4, 2025)" → "MacBook Air"; the page shows the full name.
+    private var shortModelName: String {
+        guard let name = monitor.marketingName else { return monitor.macInfo.modelIdentifier }
+        return name.components(separatedBy: " (").first ?? name
     }
 
     private func subtitle(for device: TrackedDevice) -> String {

@@ -124,6 +124,9 @@ struct CitrusBatteryApp: App {
                 .environmentObject(iosDevices)
                 .frame(minWidth: 760, minHeight: 520)
         }
+        // Sidebar (240) + content column (720 + padding): the header and the whole
+        // Battery card fit without resizing, and it stays modest on a 13-inch screen.
+        .defaultSize(width: 1000, height: 740)
         .commands {
             AppCommands(monitor: monitor, navigator: navigator, iosDevices: iosDevices)
         }
@@ -133,6 +136,7 @@ struct CitrusBatteryApp: App {
                 .environmentObject(monitor)
                 .environmentObject(iosDevices)
         }
+        .defaultSize(width: 720, height: 640)
 
         Settings {
             SettingsView()

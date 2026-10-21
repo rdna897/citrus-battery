@@ -183,7 +183,7 @@ struct MacDetailContent: View {
 
     private func chargeLimitText(_ limit: ChargeLimitStatus) -> String? {
         var parts: [String] = []
-        if let percent = limit.macOSLimitPercent { parts.append("\(percent)% (macOS)") }
+        if let percent = limit.macOSLimitPercent { parts.append("\(percent)%") }
         if let level = limit.smcChargeLevelLimit { parts.append("\(level)% (set in firmware)") }
         parts += limit.thirdPartyLimiters.map { "set by \($0)" }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
@@ -191,13 +191,13 @@ struct MacDetailContent: View {
 
     private func optimizedChargingText(_ limit: ChargeLimitStatus) -> String? {
         guard limit.optimizedChargingEnabled else { return nil }
-        return limit.optimizedChargingEngaged ? "On, holding charge for now" : "On"
+        return limit.optimizedChargingEngaged ? "On (holding charge)" : "On"
     }
 
     private func statusText(_ battery: MacBatterySnapshot) -> String {
         if battery.isFullyCharged { return "Fully charged" }
         if battery.isCharging { return "Charging" }
-        if battery.isExternalPowerConnected { return "On power adapter, not charging" }
+        if battery.isExternalPowerConnected { return "Plugged in, not charging" }
         return "On battery"
     }
 
@@ -219,8 +219,7 @@ struct MacDetailContent: View {
         if let date = battery.manufactureDate.flatMap(dateText) { return date }
         if let estimate = battery.estimatedManufactureDate {
             let date = estimate.formatted(date: .abbreviated, time: .omitted)
-            let week = battery.manufactureWeek.map { "week \($0.week), " } ?? ""
-            return "\(date) (\(week)estimated from operating time)"
+            return "\(date) (estimated)"
         }
         guard let week = battery.manufactureWeek else { return nil }
         let month = Calendar.current.monthSymbols[week.month - 1]

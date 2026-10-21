@@ -124,9 +124,8 @@ struct IOSDetailContent: View {
                 if battery.isChargingPausedBySettings {
                     AdviceBox(advice: ChargeLimitAdvice(
                         level: .info,
-                        message: "iOS has paused charging because of its charging settings (Charge Limit or "
-                            + "Optimized Battery Charging). iOS occasionally charges to 100% to keep its battery "
-                            + "estimates accurate, so this won't skew the reported capacity."))
+                        message: "Paused by Charge Limit or Optimized Battery Charging. iOS occasionally charges "
+                            + "to 100% to keep its estimates accurate, so reported capacity isn't affected."))
                 }
                 LowHealthNotice(healthFraction: battery.healthFraction,
                                 model: device.snapshot?.marketingName ?? "iPhone",
@@ -154,7 +153,7 @@ struct IOSDetailContent: View {
                 InfoRow("Battery serial", battery?.serialNumber, hidesWhenEmpty: true)
                 InfoRow("Battery manufacturer", battery?.manufacturer, hidesWhenEmpty: true)
                 InfoRow("Manufactured", battery?.estimatedManufactureDate.map {
-                    "≈ \($0.formatted(date: .abbreviated, time: .omitted)) (estimated from operating time)"
+                    "\($0.formatted(date: .abbreviated, time: .omitted)) (estimated)"
                 }, hidesWhenEmpty: true)
                 InfoRow("First used", battery?.firstUseDate?.formatted(date: .abbreviated, time: .omitted),
                         hidesWhenEmpty: true)
@@ -173,8 +172,8 @@ struct IOSDetailContent: View {
     private func status(_ battery: MacBatterySnapshot) -> String {
         if battery.isFullyCharged { return "Fully charged" }
         if battery.isCharging { return "Charging" }
-        if battery.isChargingPausedBySettings { return "Charging paused by iOS (charging settings)" }
-        return battery.isExternalPowerConnected ? "Connected, not charging" : "On battery"
+        if battery.isChargingPausedBySettings { return "Charging paused by iOS" }
+        return battery.isExternalPowerConnected ? "Plugged in, not charging" : "On battery"
     }
 
     private func healthColour(_ fraction: Double?) -> Color {

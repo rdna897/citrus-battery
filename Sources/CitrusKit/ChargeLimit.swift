@@ -56,11 +56,9 @@ extension ChargeLimitStatus {
     public func advice(cyclesSinceCalibration: Int?) -> ChargeLimitAdvice? {
         if hasThirdPartyLimit {
             let who = thirdPartyLimiters.first.map { "\($0) is" } ?? "Another app is"
-            var message = "\(who) limiting how far the battery charges. Held below full for weeks, "
-                + "the battery's gauge can lose calibration, and the reported maximum capacity may read "
-                + "lower than it really is. That's a measuring error, not extra wear. Let the battery "
-                + "charge to 100% now and then (AlDente's developers suggest a full cycle about every "
-                + "two weeks) to recalibrate it."
+            var message = "\(who) limiting charging. Weeks below full can throw off the gauge, so maximum "
+                + "capacity reads lower than it is (a measuring error, not wear). Charge to 100% now and "
+                + "then; AlDente's developers suggest a full cycle every two weeks."
             if let cycles = cyclesSinceCalibration {
                 message += " The gauge last recalibrated \(cycles) cycle\(cycles == 1 ? "" : "s") ago."
             }
@@ -69,8 +67,8 @@ extension ChargeLimitStatus {
         if macOSLimitPercent != nil || optimizedChargingEngaged {
             return ChargeLimitAdvice(
                 level: .info,
-                message: "macOS occasionally charges to 100% to keep its battery estimates accurate, "
-                    + "so this limit won't skew the reported capacity."
+                message: "macOS occasionally charges to 100% to keep its estimates accurate, so this "
+                    + "limit doesn't affect reported capacity."
             )
         }
         return nil

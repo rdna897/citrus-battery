@@ -16,9 +16,8 @@ struct LowHealthNotice: View {
         if let health = healthFraction, health < Self.threshold, !dismissedKeys.contains(batteryKey) {
             VStack(alignment: .leading, spacing: 8) {
                 Label {
-                    Text("Battery health is \(Int((health * 100).rounded()))%. Apple designs its batteries to keep "
-                        + "about 80% of their original capacity over their rated lifetime, so this battery is "
-                        + "past that point and may not last as long between charges.")
+                    Text("Battery health is \(Int((health * 100).rounded()))%. Apple batteries are designed to keep "
+                        + "about 80% of their capacity over their rated life, so expect less time between charges.")
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
