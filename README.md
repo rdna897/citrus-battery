@@ -77,7 +77,6 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 | Charge limit detection and advice | ✓ | — | — |
 | iPhone/iPad over USB | ✓ | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | — | ✓ |
-| Apple Watch | — | ✓ | ✓ |
 | History with SmartSave, backups | ✓ | ✓ | ✓ |
 | Menu bar status | ✓ | ✓ | ✓ |
 | Custom menu bar text | ✓ | — | ✓ |
