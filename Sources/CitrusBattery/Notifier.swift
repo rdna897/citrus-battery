@@ -56,12 +56,15 @@ final class Notifier: NSObject, ObservableObject {
     var isAvailable: Bool { center != nil }
 
     func refreshAuthorization() {
-        guard let center else { return }
-        Task { @MainActor [weak self] in
-            let settings = await center.notificationSettings()
-            self?.authorization = settings.authorizationStatus
-            if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
-                print("Citrus notification settings check passed")
+        // Older SDKs don't mark UNNotificationSettings as Sendable. Read its
+        // status in a nonisolated callback and transfer only that enum to the UI.
+        center?.getNotificationSettings { @Sendable [weak self] settings in
+            let status = settings.authorizationStatus
+            Task { @MainActor [weak self] in
+                self?.authorization = status
+                if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
+                    print("Citrus notification settings check passed")
+                }
             }
         }
     }
