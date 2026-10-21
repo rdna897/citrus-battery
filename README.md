@@ -92,11 +92,12 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 
 ## Building
 
-Requires macOS 13 or later, Swift 6 (Xcode or just the Command Line Tools), and
-libimobiledevice from Homebrew for iPhone/iPad support:
+Requires macOS 13 or later, Swift 6 (Xcode or just the Command Line Tools),
+libimobiledevice from Homebrew for iPhone/iPad support, and librsvg to render the
+app icon:
 
 ```bash
-brew install libimobiledevice
+brew install libimobiledevice librsvg
 ```
 
 `scripts/build-app.sh` copies libimobiledevice and its dependencies into the app

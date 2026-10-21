@@ -8,6 +8,11 @@ VERSION="${VERSION:-0.1.0}"
 BUILD="${BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 APP="dist/Citrus Battery.app"
 
+if ! command -v rsvg-convert >/dev/null 2>&1; then
+    echo "error: rsvg-convert is required to render the app icon; install it with: brew install librsvg" >&2
+    exit 1
+fi
+
 swift build -c "$CONFIG" --product CitrusBattery
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/CitrusBattery"
 
@@ -41,16 +46,15 @@ for lib in "$FRAMEWORKS"/*.dylib; do
     [ -e "$lib" ] && codesign --force --sign - "$lib" >/dev/null
 done
 
-# App icon from assets/icon.svg (Quick Look rasterises SVG without extra tools).
+# Render the app icon with transparent corners at each required resolution.
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-qlmanage -t -s 1024 -o "$WORK" assets/icon.svg >/dev/null 2>&1
 ICONSET="$WORK/AppIcon.iconset"
 mkdir "$ICONSET"
+render() { rsvg-convert -w "$1" -h "$1" assets/icon.svg -o "$2"; }
 for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$WORK/icon.svg.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" "$WORK/icon.svg.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+    render "$size" "$ICONSET/icon_${size}x${size}.png"
+    render $((size * 2)) "$ICONSET/icon_${size}x${size}@2x.png"
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
