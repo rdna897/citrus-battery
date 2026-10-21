@@ -32,10 +32,10 @@ private struct UpdateSettings: View {
             }
             Toggle("Automatically check for updates", isOn: Binding(
                 get: { updater.automaticallyChecksForUpdates },
-                set: updater.setAutomaticallyChecksForUpdates))
+                set: { enabled in updater.setAutomaticallyChecksForUpdates(enabled) }))
             Toggle("Automatically download and install updates", isOn: Binding(
                 get: { updater.automaticallyDownloadsUpdates },
-                set: updater.setAutomaticallyDownloadsUpdates))
+                set: { enabled in updater.setAutomaticallyDownloadsUpdates(enabled) }))
                 .disabled(!updater.automaticallyChecksForUpdates)
             SettingsNote("Checks GitHub daily. Automatic updates download in the background and install when Citrus Battery quits. You can also install and relaunch from the update window.")
             if let date = updater.lastUpdateCheckDate {
