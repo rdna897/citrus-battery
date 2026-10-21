@@ -10,6 +10,9 @@ struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Citrus Battery") { AboutCitrusBattery.show() }
+        }
         CommandGroup(after: .toolbar) {
             Button("Refresh") { monitor.refresh() }
                 .keyboardShortcut("r")
@@ -52,6 +55,30 @@ struct AppCommands: Commands {
     private func show(_ item: SidebarItem) {
         navigator.selection = item
         openWindow(id: "main")
+    }
+}
+
+/// Keep the native macOS About panel, with clickable author and source links.
+@MainActor
+enum AboutCitrusBattery {
+    static func show() {
+        let text = "Created by rdna897\n\ngithub.com/rdna897/citrus-battery"
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let credits = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph,
+        ])
+        let links = [
+            ("rdna897", "https://github.com/rdna897"),
+            ("github.com/rdna897/citrus-battery", "https://github.com/rdna897/citrus-battery"),
+        ]
+        for (label, address) in links {
+            credits.addAttribute(.link, value: URL(string: address)!, range: (text as NSString).range(of: label))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 }
 

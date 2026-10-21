@@ -6,13 +6,29 @@ It needs no Apple Developer account, signing certificate, provisioning profile,
 or notarization credentials. Users approve the first launch as described in
 [INSTALL.md](INSTALL.md).
 
+## Versions
+
+The root `VERSION` file is the single source of the app's public version.
+The app's About window, archive names and GitHub release use that version.
+Release tags must be exactly `v` followed by the file's value; the workflow
+rejects a mismatched tag.
+
+- `1.0`: the first release in the numbered series.
+- `1.0.1`, `1.0.2`: fixes to the 1.0 release.
+- `1.1`, `1.2`: new features within the same major version.
+- `2.0`: major compatibility changes.
+
+The separate build number identifies a particular build. GitHub uses the workflow
+run number, and local builds use the commit count unless `BUILD` is specified.
+The earlier `v0.1.0` prerelease remains available as a historical preview.
+
 ## Build and validate
 
 Install the dependencies from the README and commit the release changes. Then:
 
 ```bash
 swift test
-VERSION=0.1.0 ./scripts/package-release.sh
+./scripts/package-release.sh
 ```
 
 Packaging requires a clean checkout, builds the app for the host architecture,
@@ -34,13 +50,13 @@ on macOS 15 runners. Ordinary pushes and pull requests only produce workflow
 artifacts. A version tag publishes a GitHub Release after **both** builds pass:
 
 ```bash
-git tag -a v0.1.0 -m "Citrus Battery 0.1.0"
-git push origin v0.1.0
+git tag -a v1.0 -m "Citrus Battery 1.0"
+git push origin v1.0
 ```
 
 The workflow uses GitHub's built-in token, with write access only in the release
-job. No Apple secrets are needed. Versions starting with `0.` and versions with
-a prerelease suffix are marked as prereleases on GitHub. Review
+job. No Apple secrets are needed. Versions starting with `0.` are marked as
+prereleases on GitHub; numbered releases from `1.0` onward are regular releases. Review
 [RELEASE-NOTES.md](RELEASE-NOTES.md) before tagging.
 
 The first launch of a browser-downloaded archive must also be checked on a Mac

@@ -4,7 +4,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.1.0}"
+VERSION="$(cat VERSION)"
+if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?$ ]]; then
+    echo "error: VERSION must contain a version such as 1.0 or 1.0.1" >&2
+    exit 1
+fi
 BUILD="${BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 APP="dist/Citrus Battery.app"
 

@@ -8,8 +8,7 @@ It keeps a history of how capacity changes over time, and records everything the
 battery's gauge has logged over its life. It's free, open source, and every feature
 is included.
 
-> **Status:** early development. GitHub releases are prereleases; data availability
-> varies by hardware and OS version.
+> **Version 1.0.** Data availability varies by hardware and OS version.
 
 ## Download and install
 
@@ -123,11 +122,13 @@ Homebrew builds can raise it above macOS 13.
 ```bash
 swift build                      # debug build
 ./scripts/build-app.sh           # release build → dist/Citrus Battery.app
-VERSION=0.1.0 ./scripts/package-release.sh  # ZIPs, matching sources and checksums
+./scripts/package-release.sh     # ZIPs, matching sources and checksums
 ```
 
 Packaging needs a clean, committed checkout. See [releasing](docs/RELEASING.md)
-for the GitHub workflow and publishing instructions.
+for the GitHub workflow and publishing instructions. The root `VERSION` file is
+the source of the app and release version: `1.0`, then `1.0.1` for fixes, `1.1`
+for new features, and `2.0` for major compatibility changes.
 
 Command-line helpers:
 

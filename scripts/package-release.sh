@@ -3,16 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.1.0}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-    echo "error: VERSION must be a release version such as 0.1.0" >&2
-    exit 1
-fi
+VERSION="$(cat VERSION)"
 if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
     echo "error: commit all changes before packaging so the source archive matches the app" >&2
     exit 1
 fi
-export VERSION
 CONFIG=release ./scripts/build-app.sh
 
 APP="dist/Citrus Battery.app"
