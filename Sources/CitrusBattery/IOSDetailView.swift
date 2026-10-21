@@ -83,7 +83,7 @@ struct IOSDetailContent: View {
     }
 
     private var connectionText: String {
-        let via = device.connection.map { $0 == .wifi ? "WiFi" : "USB" }
+        let via = device.connection.map { $0 == .wifi ? "Wi-Fi" : "USB" }
         switch device.state {
         case .disconnected:
             return device.lastSeen.map { "Last seen \($0.formatted(.relative(presentation: .named)))" } ?? "Disconnected"
@@ -125,7 +125,7 @@ struct IOSDetailContent: View {
                     AdviceBox(advice: ChargeLimitAdvice(
                         level: .info,
                         message: "iOS has paused charging because of its charging settings (Charge Limit or "
-                            + "charging optimization). iOS occasionally charges to 100% to keep its battery "
+                            + "Optimized Battery Charging). iOS occasionally charges to 100% to keep its battery "
                             + "estimates accurate, so this won't skew the reported capacity."))
                 }
                 LowHealthNotice(healthFraction: battery.healthFraction,

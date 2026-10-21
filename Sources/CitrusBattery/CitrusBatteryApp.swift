@@ -206,8 +206,8 @@ enum DiagnosticDump {
                 + "\(l.minimumPackVoltageMillivolts.map(String.init) ?? "-")–\(l.maximumPackVoltageMillivolts.map(String.init) ?? "-") mV")
         }
         let limit = ChargeLimitReader.read()
-        print("Charge limit: macOS \(limit.macOSLimitPercent.map { "\($0)%" } ?? "off")"
-            + "  optimized \(limit.optimizedChargingEnabled ? (limit.optimizedChargingEngaged ? "on, engaged" : "on") : "off")"
+        print("Charge Limit: macOS \(limit.macOSLimitPercent.map { "\($0)%" } ?? "off")"
+            + "  Optimized Battery Charging \(limit.optimizedChargingEnabled ? (limit.optimizedChargingEngaged ? "on, engaged" : "on") : "off")"
             + "  third-party \(limit.thirdPartyLimiters.isEmpty ? "none" : limit.thirdPartyLimiters.joined(separator: ", "))"
             + "  BCLM \(limit.smcChargeLevelLimit.map(String.init) ?? "-")"
             + "  gauge calibrated \(b.cyclesSinceCalibration.map { "\($0) cycles ago" } ?? "-")")

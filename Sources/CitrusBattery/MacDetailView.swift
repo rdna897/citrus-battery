@@ -83,8 +83,8 @@ struct MacDetailContent: View {
                     InfoRow("Charge cycles", cyclesText(battery))
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     if let limit = monitor.chargeLimit {
-                        InfoRow("Charge limit", chargeLimitText(limit), hidesWhenEmpty: true)
-                        InfoRow("Optimized charging", optimizedChargingText(limit), hidesWhenEmpty: true)
+                        InfoRow("Charge Limit", chargeLimitText(limit), hidesWhenEmpty: true)
+                        InfoRow("Optimized Battery Charging", optimizedChargingText(limit), hidesWhenEmpty: true)
                     }
                     InfoRow("macOS health", battery.powerSource?.healthDescription, hidesWhenEmpty: true)
                 }

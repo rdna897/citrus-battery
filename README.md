@@ -40,7 +40,7 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   Viewer (⌥⌘I), and `citrusbattery://mac|history|device/<udid>|advanced[/<udid>]` links.
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
-- iPhone and iPad: devices connected by USB, or over WiFi when "Show this iPhone when
+- iPhone and iPad: devices connected by USB, or over Wi-Fi when "Show this iPhone when
   on Wi-Fi" is on in Finder, appear in the sidebar and menu bar panel with charge,
   health, cycles, temperature, lifetime data and product icons. SmartSave records them
   in History, and an optional notification fires when a device charges to a chosen

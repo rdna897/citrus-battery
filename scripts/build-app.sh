@@ -71,7 +71,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Citrus Battery finds iPhones and iPads on your network to read their battery when they're connected over WiFi.</string>
+    <string>Citrus Battery finds iPhones and iPads on your network to read their battery when they're connected over Wi-Fi.</string>
     <key>CFBundleURLTypes</key>
     <array><dict>
         <key>CFBundleURLName</key><string>org.citrusbattery.CitrusBattery</string>

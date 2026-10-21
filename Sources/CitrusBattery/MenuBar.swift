@@ -99,7 +99,7 @@ struct MenuBarPanel: View {
                     InfoRow((battery.batteryPowerWatts ?? 0) >= 0 ? "Charging with" : "Discharging with",
                             battery.batteryPowerWatts.map { String(format: "%.1f W", abs($0)) })
                     if let limit = monitor.chargeLimit?.macOSLimitPercent {
-                        InfoRow("Charge limit", "\(limit)%")
+                        InfoRow("Charge Limit", "\(limit)%")
                     }
                 }
                 .font(.callout)
