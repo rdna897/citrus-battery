@@ -126,4 +126,14 @@ public enum DurationFormat {
     public static func hoursMinutes(_ minutes: Int) -> String {
         String(format: "%d:%02d", minutes / 60, minutes % 60)
     }
+
+    /// "13 h 56 min", "2 h", "45 min": unambiguous where a clock-like "13:56" could confuse.
+    public static func readable(_ minutes: Int) -> String {
+        let hours = minutes / 60, rest = minutes % 60
+        switch (hours, rest) {
+        case (0, _): return "\(rest) min"
+        case (_, 0): return "\(hours) h"
+        default: return "\(hours) h \(rest) min"
+        }
+    }
 }

@@ -466,3 +466,12 @@ struct FakeSMC: SMCReading {
         #expect(alerts.isEmpty)
     }
 }
+
+@Suite struct DurationFormatTests {
+    @Test func readable() {
+        #expect(DurationFormat.readable(836) == "13 h 56 min")
+        #expect(DurationFormat.readable(120) == "2 h")
+        #expect(DurationFormat.readable(45) == "45 min")
+        #expect(DurationFormat.hoursMinutes(165) == "2:45")
+    }
+}

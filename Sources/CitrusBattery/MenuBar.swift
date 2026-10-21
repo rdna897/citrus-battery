@@ -109,7 +109,7 @@ struct MenuBarPanel: View {
             VStack(alignment: .leading, spacing: 2) {
                 PanelButton("Open Citrus Battery") { show(.thisMac) }
                 PanelButton("History…") { show(.history) }
-                PanelButton("Settings…") { openSettings() }
+                SettingsPanelButton(beforeOpening: closePanel)
                 Divider().padding(.vertical, 4)
                 PanelButton("Quit Citrus Battery") { NSApp.terminate(nil) }
             }
@@ -123,7 +123,12 @@ struct MenuBarPanel: View {
             temperatureUnit: temperatureUnit, capacityStyle: capacityStyle))
         guard let minutes = battery.timeRemainingMinutes else { return status }
         let label = battery.isCharging ? "until full" : "remaining"
-        return "\(status) · \(DurationFormat.hoursMinutes(minutes)) \(label)"
+        return "\(status) · \(DurationFormat.readable(minutes)) \(label)"
+    }
+
+    /// The menu bar panel sits at pop-up-menu level; close it once an action is chosen.
+    private func closePanel() {
+        NSApp.windows.filter { $0.level == .popUpMenu && $0.isVisible }.forEach { $0.close() }
     }
 
     private func healthColour(_ fraction: Double?) -> Color {
@@ -135,14 +140,44 @@ struct MenuBarPanel: View {
     }
 
     private func show(_ item: SidebarItem) {
+        closePanel()
         navigator.selection = item
         openWindow(id: "main")
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+}
+
+/// "Settings…" in the panel. macOS 14+ provides `openSettings`; the older
+/// `showSettingsWindow:` action only works while a window is key, which isn't
+/// the case once the panel has closed.
+private struct SettingsPanelButton: View {
+    let beforeOpening: () -> Void
+
+    var body: some View {
+        if #available(macOS 14, *) {
+            Modern(beforeOpening: beforeOpening)
+        } else {
+            PanelButton("Settings…") {
+                beforeOpening()
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+        }
+    }
+
+    @available(macOS 14, *)
+    private struct Modern: View {
+        let beforeOpening: () -> Void
+        @Environment(\.openSettings) private var openSettings
+
+        var body: some View {
+            PanelButton("Settings…") {
+                beforeOpening()
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            }
+        }
     }
 }
 

@@ -80,7 +80,7 @@ struct MacDetailContent: View {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     InfoRow("Status", statusText(battery))
                     InfoRow(battery.isCharging ? "Time until full" : "Time until empty",
-                            battery.timeRemainingMinutes.map(DurationFormat.hoursMinutes))
+                            battery.timeRemainingMinutes.map(DurationFormat.readable))
                     InfoRow("Charge cycles", cyclesText(battery))
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     if let limit = monitor.chargeLimit {

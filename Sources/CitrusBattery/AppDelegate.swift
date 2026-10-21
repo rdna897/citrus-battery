@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
         }
+        if ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "panel" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Self.clickStatusItem() }
+        }
         if ProcessInfo.processInfo.environment["CITRUS_DEBUG_WINDOWS"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
                 for window in NSApp.windows {
@@ -25,6 +28,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .publisher(for: UserDefaults.didChangeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyDockIconPreference() }
+    }
+
+    /// Opens the menu bar panel by clicking our own status item (for UI captures).
+    private static func clickStatusItem() {
+        func button(in view: NSView) -> NSButton? {
+            if let button = view as? NSButton { return button }
+            return view.subviews.lazy.compactMap(button(in:)).first
+        }
+        func log(_ message: String) { FileHandle.standardError.write(Data((message + "\n").utf8)) }
+        for window in NSApp.windows where String(describing: type(of: window)).contains("StatusBar") {
+            log("status window \(type(of: window)) content=\(String(describing: window.contentView.map { type(of: $0) }))")
+            if let content = window.contentView, let button = button(in: content) {
+                log("clicking \(type(of: button))")
+                button.performClick(nil)
+                return
+            }
+        }
+        log("no status item button found")
     }
 
     /// Closing the window leaves the menu bar item running.

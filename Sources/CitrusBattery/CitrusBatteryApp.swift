@@ -50,7 +50,9 @@ struct CitrusBatteryApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Citrus Battery", id: "main") {
+        // A single window: reopening (e.g. from the menu bar) brings it forward
+        // instead of creating another copy.
+        Window("Citrus Battery", id: "main") {
             ContentView()
                 .environmentObject(monitor)
                 .environmentObject(history)

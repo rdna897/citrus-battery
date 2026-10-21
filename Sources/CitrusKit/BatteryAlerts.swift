@@ -32,7 +32,7 @@ public enum BatteryAlert: Sendable, Equatable {
     public var body: String {
         switch self {
         case let .lowCharge(percent): "Battery percentage is at \(percent)%."
-        case let .lowTime(minutes): "About \(DurationFormat.hoursMinutes(minutes)) of battery time remaining."
+        case let .lowTime(minutes): "About \(DurationFormat.readable(minutes)) of battery time remaining."
         case .fullyCharged: "You can unplug the power adapter."
         }
     }
