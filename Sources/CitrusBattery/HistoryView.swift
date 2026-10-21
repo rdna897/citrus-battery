@@ -154,8 +154,8 @@ struct HistoryView: View {
         let low = max((points.map(\.health).min() ?? 80) - 5, 0)
         let high = max(points.map(\.health).max() ?? 100, 100) + 2
         return Chart(points, id: \.date) { point in
+            // Straight segments: smoothing would invent changes between readings.
             LineMark(x: .value("Date", point.date), y: .value("Health", point.health))
-                .interpolationMethod(.monotone)
             PointMark(x: .value("Date", point.date), y: .value("Health", point.health))
                 .symbolSize(18)
         }
@@ -174,31 +174,33 @@ struct HistoryView: View {
             TableColumn("Date", value: \.date) { entry in
                 Text(entry.date.formatted(date: .abbreviated, time: .shortened))
             }
-            .width(min: 140, ideal: 160)
+            .width(140)
             TableColumn("Cycles", value: \.cycleCountSortKey) { entry in
                 Text(entry.cycleCount.map(String.init) ?? "—").monospacedDigit()
             }
-            .width(min: 50, ideal: 60)
+            .width(50)
             TableColumn("Health", value: \.healthSortKey) { entry in
                 Text(entry.healthFraction.map { String(format: "%.1f%%", $0 * 100) } ?? "—").monospacedDigit()
             }
-            .width(min: 60, ideal: 70)
+            .width(60)
             TableColumn("Full Charge", value: \.fullChargeSortKey) { entry in
                 Text(entry.fullChargeCapacity.map { capacityUnit.format(milliampHours: $0, voltageMillivolts: nil) } ?? "—")
                     .monospacedDigit()
             }
-            .width(min: 80, ideal: 90)
+            .width(80)
             TableColumn("Design", value: \.designSortKey) { entry in
                 Text(entry.designCapacity.map { capacityUnit.format(milliampHours: $0, voltageMillivolts: nil) } ?? "—")
                     .monospacedDigit()
             }
-            .width(min: 80, ideal: 90)
+            .width(80)
             TableColumn("Battery Serial", value: \.batterySerialSortKey) { entry in
                 Text(entry.batterySerial ?? "—").textSelection(.enabled)
             }
+            .width(min: 90)
             TableColumn("OS", value: \.osSortKey) { entry in
                 Text(entry.osVersion ?? "—")
             }
+            .width(100)
         }
         .contextMenu(forSelectionType: HistoryEntry.ID.self) { ids in
             Button("Copy") { copy(ids) }

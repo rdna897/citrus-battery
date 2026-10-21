@@ -30,9 +30,7 @@ private struct GeneralSettings: View {
                     Text("\(unit.name) (\(unit.symbol))").tag(unit)
                 }
             }
-            Text("Used everywhere Citrus Battery shows a temperature.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsNote("Used everywhere Citrus Battery shows a temperature.")
         }
     }
 }
@@ -47,9 +45,7 @@ private struct BatterySettings: View {
             Picker("Charge percentage:", selection: $capacityStyle) {
                 ForEach(CapacityStyle.allCases) { Text($0.name).tag($0) }
             }
-            Text("Raw values come straight from the battery; macOS style matches the menu bar. Affects the live view only.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsNote("Raw values come straight from the battery; macOS style matches the menu bar. Affects the live view only.")
 
             Picker("Capacity units:", selection: $capacityUnit) {
                 ForEach(CapacityUnit.allCases) { Text($0.name).tag($0) }
@@ -58,9 +54,7 @@ private struct BatterySettings: View {
             Picker("Update interval:", selection: $updateInterval) {
                 ForEach(UpdateInterval.allCases) { Text($0.name).tag($0) }
             }
-            Text("Delayed refreshes every 5 seconds and averages power over 30 seconds.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsNote("Delayed refreshes every 5 seconds and averages power over 30 seconds.")
         }
     }
 }
@@ -73,11 +67,9 @@ private struct HistorySettings: View {
         Form {
             Toggle("Enable SmartSave for new devices", isOn: $autosaveNewDevices)
                 .onChange(of: autosaveNewDevices) { _ in history.reload() }
-            Text("SmartSave records a device's battery data about once an hour, skipping readings that "
+            SettingsNote("SmartSave records a device's battery data about once an hour, skipping readings that "
                 + "haven't changed since earlier the same day. You can turn it off per device in the "
                 + "History window.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 }
@@ -109,6 +101,7 @@ private struct MenuBarSettings: View {
                 }
             if let loginError {
                 Text(loginError).font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Toggle("Show Dock icon", isOn: $showDockIcon)
                 .disabled(!showInMenuBar)
@@ -116,27 +109,28 @@ private struct MenuBarSettings: View {
 
             Divider()
 
-            TextField("Menu bar text:", text: $format)
-                .font(.body.monospaced())
-            HStack(spacing: 4) {
-                Text("Insert:").font(.caption).foregroundStyle(.secondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(MenuBarToken.allCases) { token in
-                            Button(token.title) { format += (format.isEmpty ? "" : " ") + token.rawValue }
-                                .controlSize(.small)
-                        }
+            LabeledContent("Menu bar text:") {
+                TextField("Menu bar text", text: $format)
+                    .labelsHidden()
+                    .font(.body.monospaced())
+            }
+            LabeledContent("Insert:") {
+                FlowLayout(spacing: 4) {
+                    ForEach(MenuBarToken.allCases) { token in
+                        Button(token.title) { format += (format.isEmpty ? "" : " ") + token.rawValue }
+                            .controlSize(.small)
                     }
                 }
             }
-            HStack {
-                Text("Preview:").foregroundStyle(.secondary)
-                MenuBarLabel()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-                Spacer()
-                Button("Use Default") { format = MenuBarToken.defaultFormat }
+            LabeledContent("Preview:") {
+                HStack {
+                    MenuBarLabel()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                    Spacer()
+                    Button("Use Default") { format = MenuBarToken.defaultFormat }
+                }
             }
             Picker("Battery icon:", selection: $symbolPosition) {
                 ForEach(BatterySymbolPosition.allCases) { Text($0.name).tag($0) }
@@ -181,18 +175,18 @@ private struct NotificationSettings: View {
                 .disabled(!lowTimeEnabled)
             }
             Toggle("Notify when the battery is fully charged", isOn: $fullyCharged)
-            Text("Each alert fires once per discharge and again after you plug in, at most every 15 minutes.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsNote("Each alert fires once per discharge and again after you plug in, at most every 15 minutes.")
 
             Divider()
 
             if !notifier.isAvailable {
                 Text("Notifications need Citrus Battery to run as an app (build it with scripts/build-app.sh).")
                     .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if notifier.authorization == .denied {
                 Text("Notifications are turned off for Citrus Battery in System Settings.")
                     .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Button("Send Test Notification") { notifier.sendTest() }
@@ -209,5 +203,69 @@ private struct NotificationSettings: View {
             if enabled.contains(true) { notifier.requestAuthorization() }
         }
         .onAppear { notifier.refreshAuthorization() }
+    }
+}
+
+/// Secondary explanatory text under a setting; wraps instead of truncating.
+private struct SettingsNote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Lays out children left to right, wrapping onto new lines as needed.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = rows[rows.count - 1].indices.isEmpty ? size.width : rows[rows.count - 1].width + spacing + size.width
+            if needed > width, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
+            }
+            var row = rows[rows.count - 1]
+            row.width = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+            rows[rows.count - 1] = row
+        }
+        return rows
     }
 }

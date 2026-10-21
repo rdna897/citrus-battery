@@ -30,15 +30,32 @@ struct MenuBarLabel: View {
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
 
     var body: some View {
-        // Menu bar labels reliably render only Text and Image, so build one Text.
-        let text = Text(MenuBarFormatter.render(
-            format, values: monitor.menuBarValues(temperatureUnit: temperatureUnit, capacityStyle: capacityStyle)))
-        let icon = Text(Image(systemName: Self.symbolName(for: monitor.battery)))
-        switch symbolPosition {
-        case .none: text
-        case .left: format.isEmpty ? icon : icon + Text(" ") + text
-        case .right: format.isEmpty ? icon : text + Text(" ") + icon
+        // The status bar drops images embedded in Text, so draw icon and text into
+        // one template image; macOS then tints it for light and dark menu bars.
+        Image(nsImage: Self.renderTemplate(content))
+    }
+
+    /// The icon and text as a plain view (also used for the Settings preview).
+    var content: some View {
+        let text = MenuBarFormatter.render(
+            format, values: monitor.menuBarValues(temperatureUnit: temperatureUnit, capacityStyle: capacityStyle))
+        let icon = Image(systemName: Self.symbolName(for: monitor.battery))
+        return HStack(spacing: 4) {
+            if symbolPosition == .left || (symbolPosition == .none && text.isEmpty) { icon }
+            if !text.isEmpty { Text(text).monospacedDigit() }
+            if symbolPosition == .right { icon }
         }
+        .font(.system(size: 13))
+        .foregroundStyle(.black)
+    }
+
+    @MainActor
+    static func renderTemplate<V: View>(_ view: V) -> NSImage {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let image = renderer.nsImage ?? NSImage()
+        image.isTemplate = true
+        return image
     }
 
     static func symbolName(for battery: MacBatterySnapshot?) -> String {

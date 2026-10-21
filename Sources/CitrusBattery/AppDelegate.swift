@@ -8,6 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyDockIconPreference()
+        if ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "settings" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+        }
         if ProcessInfo.processInfo.environment["CITRUS_DEBUG_WINDOWS"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
                 for window in NSApp.windows {

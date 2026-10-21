@@ -46,7 +46,9 @@ extension UserDefaults {
 /// Which part of the main window is showing; shared so the menu bar can open History.
 @MainActor
 final class Navigator: ObservableObject {
-    @Published var selection: SidebarItem? = .thisMac
+    // CITRUS_DEBUG_OPEN=history starts on History (used for UI captures).
+    @Published var selection: SidebarItem? =
+        ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "history" ? .history : .thisMac
 }
 
 extension UserDefaults {
