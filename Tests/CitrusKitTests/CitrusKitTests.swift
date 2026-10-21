@@ -145,3 +145,51 @@ struct FakeSMC: SMCReading {
         #expect(snapshot.manufactureWeek == .init(week: 33, month: 8))
     }
 }
+
+@Suite struct ManufactureDateTests {
+    static let utc: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
+    static func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        utc.date(from: DateComponents(year: y, month: m, day: d, hour: 12))!
+    }
+
+    @Test func asciiManufactureDate() {
+        // Apple Silicon pack value: bytes "208033" little-endian → "330802".
+        #expect(MacBatterySnapshot.asciiDigits(55182682501939) == "330802")
+        #expect(MacBatterySnapshot.asciiDigits(0x5B0B) == nil)
+        #expect(MacBatterySnapshot.decodePackedDate(55182682501939) == nil)
+    }
+
+    @Test func estimateMatchesCoconutBattery() {
+        // M4 MacBook Air, 2026-10-19: 10,424 operating hours, recorded week 33.
+        let now = Self.day(2026, 10, 19)
+        let withWeek = BatteryOrigin.estimatedManufactureDate(
+            operatingHours: 10_424, week: .init(week: 33, month: 8), now: now, calendar: Self.utc)
+        #expect(withWeek.map { Self.utc.dateComponents([.year, .month, .day], from: $0) }
+            == DateComponents(year: 2025, month: 8, day: 11))
+
+        let withoutWeek = BatteryOrigin.estimatedManufactureDate(
+            operatingHours: 10_424, week: nil, now: now, calendar: Self.utc)
+        #expect(withoutWeek.map { Self.utc.dateComponents([.year, .month, .day], from: $0) }
+            == DateComponents(year: 2025, month: 8, day: 11))
+    }
+
+    @Test func packSuppliesLifetimeTemperatureAndDate() {
+        let pack: [String: Any] = [
+            "Temperature": 2579, "ManufactureDate": 55182682501939,
+            "LifetimeData": ["TotalOperatingTime": 10_424, "MaximumTemperature": 38, "MinimumTemperature": 6,
+                             "AverageTemperature": 212, "MaximumPackVoltage": 13368, "MinimumPackVoltage": 10676],
+        ]
+        let snapshot = MacBatterySnapshot(registry: SnapshotTests.appleSilicon, pack: pack, smc: nil,
+                                          powerSource: nil, date: Self.day(2026, 10, 19))
+        #expect(snapshot.temperatureCelsius == 25.79)
+        #expect(snapshot.manufactureWeek == .init(week: 33, month: 8))
+        #expect(snapshot.lifetime?.totalOperatingHours == 10_424)
+        #expect(snapshot.lifetime?.averageTemperatureCelsius == 21.2)
+        #expect(snapshot.estimatedManufactureDate != nil)
+    }
+}

@@ -27,6 +27,9 @@ struct MacDetailContent: View {
                 if !battery.failures.messages.isEmpty {
                     failuresSection(battery.failures)
                 }
+                if let lifetime = battery.lifetime {
+                    lifetimeSection(lifetime)
+                }
                 detailsSection(battery)
             } else {
                 noBattery
@@ -96,7 +99,7 @@ struct MacDetailContent: View {
                         InfoRow(batteryFlowTitle(battery), watts(battery.batteryPowerWatts.map(abs)))
                     }
                     InfoRow("From adapter", watts(monitor.power.adapterWatts))
-                    InfoRow("Charger", battery?.adapter.map(adapterText))
+                    InfoRow("Charger", battery?.adapter.flatMap(adapterText), hidesWhenEmpty: true)
                     InfoRow("CPU temperature", monitor.power.cpuTemperatureCelsius.map(temperatureUnit.format(celsius:)))
                 }
                 if monitor.powerHistory.count > 1 {
@@ -139,6 +142,7 @@ struct MacDetailContent: View {
                 InfoRow("Battery serial", battery.serialNumber)
                 InfoRow("Manufacturer", battery.manufacturer, hidesWhenEmpty: true)
                 InfoRow("Manufacture date", manufactureText(battery), hidesWhenEmpty: true)
+                InfoRow("Battery age", ageText(battery), hidesWhenEmpty: true)
                 InfoRow("Gas gauge", battery.gasGaugeName)
                 InfoRow("Mac serial", monitor.macInfo.serialNumber)
                 InfoRow("Up since", monitor.macInfo.bootDate.map {
@@ -146,6 +150,31 @@ struct MacDetailContent: View {
                 })
             }
         }
+    }
+
+    private func lifetimeSection(_ lifetime: BatteryLifetime) -> some View {
+        Card(title: "Lifetime", systemImage: "heart.text.square.fill") {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                InfoRow("Operating time", lifetime.totalOperatingHours.map {
+                    "\($0.formatted()) h (\($0 / 24) days)"
+                })
+                InfoRow("Temperature range", range(lifetime.minimumTemperatureCelsius,
+                                                   lifetime.maximumTemperatureCelsius,
+                                                   temperatureUnit.format(celsius:)))
+                InfoRow("Average temperature", lifetime.averageTemperatureCelsius.map(temperatureUnit.format(celsius:)))
+                InfoRow("Pack voltage range", range(lifetime.minimumPackVoltageMillivolts.map(Double.init),
+                                                    lifetime.maximumPackVoltageMillivolts.map(Double.init)) {
+                    String(format: "%.2f V", $0 / 1000)
+                })
+                InfoRow("Max charge current", lifetime.maximumChargeCurrentMilliamps.map { "\($0) mA" })
+                InfoRow("Max discharge current", lifetime.maximumDischargeCurrentMilliamps.map { "\(abs($0)) mA" })
+            }
+        }
+    }
+
+    private func range(_ low: Double?, _ high: Double?, _ format: (Double) -> String) -> String? {
+        guard let low, let high else { return nil }
+        return "\(format(low)) – \(format(high))"
     }
 
     private var noBattery: some View {
@@ -177,8 +206,10 @@ struct MacDetailContent: View {
         (battery.batteryPowerWatts ?? 0) >= 0 ? "Charging with" : "Discharging with"
     }
 
-    private func adapterText(_ adapter: PowerAdapter) -> String {
-        [adapter.watts.map { "\($0) W" }, adapter.name].compactMap { $0 }.joined(separator: " ")
+    private func adapterText(_ adapter: PowerAdapter) -> String? {
+        let text = [adapter.watts.flatMap { $0 > 0 ? "\($0) W" : nil }, adapter.name]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        return text.isEmpty ? nil : text
     }
 
     private func watts(_ value: Double?) -> String? {
@@ -187,9 +218,22 @@ struct MacDetailContent: View {
 
     private func manufactureText(_ battery: MacBatterySnapshot) -> String? {
         if let date = battery.manufactureDate.flatMap(dateText) { return date }
+        if let estimate = battery.estimatedManufactureDate {
+            let date = estimate.formatted(date: .abbreviated, time: .omitted)
+            let week = battery.manufactureWeek.map { "week \($0.week), " } ?? ""
+            return "\(date) (\(week)estimated from operating time)"
+        }
         guard let week = battery.manufactureWeek else { return nil }
         let month = Calendar.current.monthSymbols[week.month - 1]
         return "Week \(week.week) (\(month)), year not recorded"
+    }
+
+    private func ageText(_ battery: MacBatterySnapshot) -> String? {
+        let start = battery.manufactureDate.flatMap { Calendar.current.date(from: $0) }
+            ?? battery.estimatedManufactureDate
+        guard let start else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: start, to: battery.date).day ?? 0
+        return "\(days) days"
     }
 
     private func dateText(_ components: DateComponents) -> String? {

@@ -67,8 +67,15 @@ enum DiagnosticDump {
         Swift.print("Adapter: \(b.adapter?.watts.map { "\($0) W" } ?? "-") \(b.adapter?.name ?? "")")
         Swift.print("Serial: \(b.serialNumber ?? "-")  gauge: \(b.gasGaugeName ?? "-")  maker: \(b.manufacturer ?? "-")")
         let made = b.manufactureDate.map { "\($0.year ?? 0)-\($0.month ?? 0)-\($0.day ?? 0)" }
+            ?? b.estimatedManufactureDate.map { "\($0.formatted(date: .numeric, time: .omitted)) (estimated)" }
             ?? b.manufactureWeek.map { "week \($0.week), month \($0.month), year unknown" }
         Swift.print("Manufactured: \(made ?? "-")")
+        if let l = b.lifetime {
+            Swift.print("Lifetime: \(l.totalOperatingHours.map(String.init) ?? "-") h operating, "
+                + "temperature \(fmt(l.minimumTemperatureCelsius))–\(fmt(l.maximumTemperatureCelsius)) °C "
+                + "(avg \(fmt(l.averageTemperatureCelsius))), pack "
+                + "\(l.minimumPackVoltageMillivolts.map(String.init) ?? "-")–\(l.maximumPackVoltageMillivolts.map(String.init) ?? "-") mV")
+        }
         Swift.print("Failures: \(b.failures.messages.isEmpty ? "none" : b.failures.messages.joined(separator: ", "))")
     }
 

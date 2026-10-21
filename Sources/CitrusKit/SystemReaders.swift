@@ -9,7 +9,17 @@ public enum MacBatteryReader {
         guard let registry = registryProperties(), (registry["BatteryInstalled"] as? Bool) != false else {
             return nil
         }
-        return MacBatterySnapshot(registry: registry, smc: smc, powerSource: powerSourceInfo())
+        return MacBatterySnapshot(registry: registry, pack: packBatteryData(), smc: smc,
+                                  powerSource: powerSourceInfo())
+    }
+
+    /// `BatteryData` of the `AppleSmartBatteryPack` child entry, if present.
+    public static func packBatteryData() -> [String: Any]? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBatteryPack"))
+        guard service != IO_OBJECT_NULL else { return nil }
+        defer { IOObjectRelease(service) }
+        return IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? [String: Any]
     }
 
     public static func registryProperties() -> [String: Any]? {

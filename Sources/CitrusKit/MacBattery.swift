@@ -60,6 +60,10 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var manufactureDate: DateComponents?
     /// Manufacture week without a year, when no full date is available.
     public var manufactureWeek: BatteryOrigin.ManufactureWeek?
+    /// Estimated from operating hours (and the manufacture week, if recorded)
+    /// when the battery stores no full date.
+    public var estimatedManufactureDate: Date?
+    public var lifetime: BatteryLifetime?
     public var failures: BatteryFailure
     public var powerSource: PowerSourceInfo?
 
@@ -111,17 +115,26 @@ extension MacBatterySnapshot {
     /// Silicon publishes percentages at the top level and real capacities
     /// inside `BatteryData`, and may omit temperature entirely. In that case
     /// the SMC is used.
-    public init(registry r: [String: Any], smc: SMCReading?, powerSource: PowerSourceInfo?, date: Date = Date()) {
+    ///
+    /// `pack` is the `BatteryData` of the child `AppleSmartBatteryPack` entry. On
+    /// Apple Silicon it holds temperature, raw capacities, failure flags,
+    /// manufacture date and lifetime data that the parent omits.
+    public init(registry r: [String: Any], pack: [String: Any]? = nil, smc: SMCReading?,
+                powerSource: PowerSourceInfo?, date: Date = Date()) {
         let batteryData = r["BatteryData"] as? [String: Any] ?? [:]
+        let pack = pack ?? [:]
         let topLevelIsPercent = Self.int(r["MaxCapacity"]).map { $0 <= 100 } ?? false
 
         self.date = date
         designCapacity = Self.int(batteryData["DesignCapacity"]) ?? Self.int(r["DesignCapacity"])
+            ?? Self.int(pack["DesignCapacity"])
             ?? smc?.double(SMCKey.designCapacity).map { Int($0) }
         fullChargeCapacity = Self.int(r["AppleRawMaxCapacity"]) ?? Self.int(batteryData["FullChargeCapacity"])
+            ?? Self.int(pack["AppleRawMaxCapacity"])
             ?? (topLevelIsPercent ? nil : Self.int(r["MaxCapacity"]))
             ?? smc?.double(SMCKey.fullChargeCapacity).map { Int($0) }
         currentCapacity = Self.int(r["AppleRawCurrentCapacity"]) ?? Self.int(batteryData["RemainingCapacity"])
+            ?? Self.int(pack["AppleRawCurrentCapacity"])
             ?? (topLevelIsPercent ? nil : Self.int(r["CurrentCapacity"]))
             ?? smc?.double(firstOf: SMCKey.remainingCapacity).map { Int($0) }
         nominalChargeCapacity = Self.int(r["NominalChargeCapacity"]) ?? Self.int(batteryData["NominalChargeCapacity"])
@@ -129,14 +142,18 @@ extension MacBatterySnapshot {
         cycleCount = Self.int(r["CycleCount"]) ?? smc?.double(SMCKey.cycleCount).map { Int($0) }
         designCycleCount = Self.int(r["DesignCycleCount9C"]) ?? Self.int(r["DesignCycleCount70"])
 
-        if let centi = Self.int(r["Temperature"]) ?? Self.int(r["VirtualTemperature"]) {
+        if let centi = Self.int(r["Temperature"]) ?? Self.int(r["VirtualTemperature"])
+            ?? Self.int(pack["Temperature"]) ?? Self.int(pack["VirtualTemperature"]) {
             temperatureCelsius = Double(centi) / 100
         } else {
             temperatureCelsius = smc?.double(SMCKey.batteryTemperature)
         }
 
         voltageMillivolts = Self.int(r["Voltage"]) ?? Self.int(r["AppleRawBatteryVoltage"])
-        amperageMilliamps = Self.int(r["InstantAmperage"]) ?? Self.int(r["Amperage"])
+        // Prefer the SMC's live current: on Apple Silicon the registry's
+        // InstantAmperage can sit at a placeholder (-1000 mA) while discharging.
+        amperageMilliamps = smc?.double(SMCKey.batteryCurrent).map { Int($0) }
+            ?? Self.int(r["InstantAmperage"]) ?? Self.int(r["Amperage"])
 
         isCharging = Self.bool(r["IsCharging"]) ?? false
         isExternalPowerConnected = Self.bool(r["ExternalConnected"]) ?? false
@@ -157,23 +174,48 @@ extension MacBatterySnapshot {
             ?? smc?.read(SMCKey.batterySerial)?.stringValue
         gasGaugeName = r["DeviceName"] as? String
         manufacturer = r["Manufacturer"] as? String ?? serialNumber.flatMap(BatteryOrigin.manufacturer(serial:))
-        manufactureDate = Self.int(r["ManufactureDate"]).flatMap(Self.decodePackedDate)
+        let lifetimeData = (r["LifetimeData"] ?? batteryData["LifetimeData"] ?? pack["LifetimeData"]) as? [String: Any]
+        lifetime = lifetimeData.map(BatteryLifetime.init(dictionary:))
+
+        // `ManufactureDate` is a packed Smart Battery date on Intel, but on Apple
+        // Silicon it holds ASCII digits ("330802": week, month, weekday) with no year.
+        let rawDate = Self.int(r["ManufactureDate"]) ?? Self.int(pack["ManufactureDate"])
+        manufactureDate = rawDate.flatMap(Self.decodePackedDate)
         if manufactureDate == nil {
-            manufactureWeek = smc?.read(SMCKey.batteryManufactureWeek)?.stringValue
-                .flatMap(BatteryOrigin.manufactureWeek(bmdt:))
+            let week = rawDate.flatMap(Self.asciiDigits).flatMap(BatteryOrigin.manufactureWeek(bmdt:))
+                ?? smc?.read(SMCKey.batteryManufactureWeek)?.stringValue.flatMap(BatteryOrigin.manufactureWeek(bmdt:))
+            manufactureWeek = week
+            if let hours = lifetime?.totalOperatingHours {
+                estimatedManufactureDate = BatteryOrigin.estimatedManufactureDate(
+                    operatingHours: hours, week: week, now: date)
+            }
         }
         failures = BatteryFailure(rawValue: Self.int(r["PermanentFailureStatus"])
-            ?? Self.int(batteryData["PermanentFailureStatus"]) ?? 0)
+            ?? Self.int(batteryData["PermanentFailureStatus"]) ?? Self.int(pack["PermanentFailureStatus"]) ?? 0)
         self.powerSource = powerSource
     }
 
     /// Decodes the Smart Battery Data packed date: `(year − 1980) << 9 | month << 5 | day`.
     public static func decodePackedDate(_ value: Int) -> DateComponents? {
+        guard (0...0xFFFF).contains(value) else { return nil }
         let day = value & 0x1F
         let month = (value >> 5) & 0x0F
         let year = (value >> 9) + 1980
         guard (1...31).contains(day), (1...12).contains(month), year < 2100 else { return nil }
         return DateComponents(year: year, month: month, day: day)
+    }
+
+    /// An integer whose big-endian bytes are ASCII digits, e.g. 0x323038303333 → "208033"
+    /// read backwards as "330802" (the gauge stores the string little-endian).
+    static func asciiDigits(_ value: Int) -> String? {
+        var bytes: [UInt8] = []
+        var v = UInt64(bitPattern: Int64(value))
+        while v != 0 {
+            bytes.append(UInt8(v & 0xFF))
+            v >>= 8
+        }
+        guard !bytes.isEmpty, bytes.allSatisfy({ (0x30...0x39).contains($0) }) else { return nil }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     /// Reads integers, reinterpreting unsigned 64-bit registry values as signed

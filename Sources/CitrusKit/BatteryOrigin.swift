@@ -33,6 +33,31 @@ public enum BatteryOrigin {
         public var month: Int
     }
 
+    /// Estimates when the pack was made from its powered-on hours.
+    ///
+    /// This is the method coconutBattery uses (today − operating hours). When the
+    /// battery also records its manufacture week (which carries no year), the
+    /// estimate picks the year and the recorded week gives the exact Monday.
+    public static func estimatedManufactureDate(
+        operatingHours: Int, week: ManufactureWeek?, now: Date = Date(),
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> Date? {
+        guard operatingHours > 0,
+              let estimate = calendar.date(byAdding: .day, value: -(operatingHours / 24), to: now)
+        else { return nil }
+        let estimateDay = calendar.startOfDay(for: estimate)
+        guard let week else { return estimateDay }
+
+        var iso = Calendar(identifier: .iso8601)
+        iso.timeZone = calendar.timeZone
+        let year = calendar.component(.year, from: estimate)
+        let candidates = (year - 1...year + 1).compactMap { y in
+            iso.date(from: DateComponents(weekday: 2, weekOfYear: week.week, yearForWeekOfYear: y))
+        }.filter { $0 <= now }
+        return candidates.min { abs($0.timeIntervalSince(estimate)) < abs($1.timeIntervalSince(estimate)) }
+            ?? estimateDay
+    }
+
     /// Decodes the SMC `BMDT` string found on Apple Silicon batteries, e.g.
     /// `"330802"`: ISO week 33, month 08, weekday 2 (Monday).
     ///
