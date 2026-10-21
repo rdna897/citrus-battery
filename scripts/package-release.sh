@@ -42,6 +42,14 @@ cp docs/INSTALL.md "$WORK/$NAME/INSTALL.md"
 cp LICENSE "$WORK/$NAME/LICENSE"
 ditto -c -k --sequesterRsrc --keepParent "$WORK/$NAME" "dist/$NAME.zip"
 
+# Validate the archive after extraction and launch it from a different path.
+mkdir "$WORK/unpacked"
+ditto -x -k "dist/$NAME.zip" "$WORK/unpacked"
+EXTRACTED_APP="$WORK/unpacked/$NAME/Citrus Battery.app"
+codesign --verify --deep --strict "$EXTRACTED_APP"
+"$EXTRACTED_APP/Contents/MacOS/CitrusBattery" --dump > "$WORK/launch.txt"
+test -s "$WORK/launch.txt"
+
 # Include our exact revision and the matching source archives for bundled
 # libraries, together with their Homebrew build recipes and license notices.
 mkdir -p "$WORK/$NAME-sources/CitrusBattery"

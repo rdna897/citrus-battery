@@ -3,6 +3,7 @@ import Combine
 import ServiceManagement
 
 /// Applies the Dock icon preference and keeps the app running in the menu bar.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var defaultsObserver: AnyCancellable?
 
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opens the menu bar panel by clicking our own status item (for UI captures).
     private static func clickStatusItem() {
+        @MainActor
         func button(in view: NSView) -> NSButton? {
             if let button = view as? NSButton { return button }
             return view.subviews.lazy.compactMap(button(in:)).first

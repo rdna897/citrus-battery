@@ -212,14 +212,16 @@ struct HistoryView: View {
     }
 
     private func copy(_ ids: Set<HistoryEntry.ID>) {
-        let rows = sortedEntries.filter { ids.contains($0.id) }.map { entry in
-            [entry.date.formatted(date: .numeric, time: .shortened),
-             entry.cycleCount.map(String.init) ?? "",
+        let entries = sortedEntries.filter { ids.contains($0.id) }
+        let rows: [String] = entries.map { entry in
+            let columns: [String] = [entry.date.formatted(date: .numeric, time: .shortened),
+             entry.cycleCount.map { String($0) } ?? "",
              entry.healthFraction.map { String(format: "%.1f%%", $0 * 100) } ?? "",
-             entry.fullChargeCapacity.map(String.init) ?? "",
-             entry.designCapacity.map(String.init) ?? "",
+             entry.fullChargeCapacity.map { String($0) } ?? "",
+             entry.designCapacity.map { String($0) } ?? "",
              entry.batterySerial ?? "",
-             entry.osVersion ?? ""].joined(separator: "\t")
+             entry.osVersion ?? ""]
+            return columns.joined(separator: "\t")
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(rows.joined(separator: "\n"), forType: .string)

@@ -16,7 +16,8 @@ VERSION=0.1.0 ./scripts/package-release.sh
 ```
 
 Packaging requires a clean checkout, builds the app for the host architecture,
-verifies the app signature, checks that bundled libraries include that
+verifies the app signature before and after extraction, runs the extracted app's
+command-line diagnostics, checks that bundled libraries include that
 architecture, and rejects remaining external Homebrew links. The app declares
 the highest minimum macOS version required by its executable and bundled
 libraries. Building on a newer Mac can produce a higher minimum version.
