@@ -18,13 +18,14 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # Catch accidental links to libraries that only exist on the build machine.
-for binary in "$APP/Contents/MacOS/CitrusBattery" "$APP/Contents/Frameworks"/*.dylib; do
+while IFS= read -r -d '' binary; do
+    file -b "$binary" | grep -q 'Mach-O' || continue
     if otool -L "$binary" | tail -n +2 | awk '{ print $1 }' | grep -E '^(/opt/homebrew/|/usr/local/)' >/dev/null; then
         echo "error: $binary still links to Homebrew outside the app bundle" >&2
         exit 1
     fi
     lipo "$binary" -verify_arch "$ARCH"
-done
+done < <(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" -type f -print0)
 codesign --verify --deep --strict "$APP"
 if ! codesign -dvv "$APP" 2>&1 | grep '^Signature=adhoc$' >/dev/null; then
     echo "error: expected an ad hoc signature" >&2
@@ -51,6 +52,11 @@ python3 scripts/test-app-launch.py "$EXTRACTED_APP"
 mkdir -p "$WORK/$NAME-sources/CitrusBattery"
 git archive HEAD | tar -x -C "$WORK/$NAME-sources/CitrusBattery"
 python3 scripts/collect-release-sources.py "$APP/Contents/Resources/Licenses" "$WORK/$NAME-sources/dependencies"
+# Include the exact source revision of the pinned Sparkle distribution too.
+SPARKLE_REVISION="$(python3 -c 'import json; print(next(p["state"]["revision"] for p in json.load(open("Package.resolved"))["pins"] if p["identity"] == "sparkle"))')"
+test "$(git -C .build/checkouts/Sparkle rev-parse HEAD)" = "$SPARKLE_REVISION"
+mkdir "$WORK/$NAME-sources/dependencies/Sparkle"
+git -C .build/checkouts/Sparkle archive "$SPARKLE_REVISION" | tar -x -C "$WORK/$NAME-sources/dependencies/Sparkle"
 ditto -c -k --keepParent "$WORK/$NAME-sources" "dist/$NAME-sources.zip"
 for archive in "$NAME.zip" "$NAME-sources.zip"; do
     (cd dist && shasum -a 256 "$archive" > "$archive.sha256")

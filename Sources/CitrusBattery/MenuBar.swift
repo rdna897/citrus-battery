@@ -76,6 +76,7 @@ struct MenuBarPanel: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var iosDevices: IOSDeviceMonitor
+    @EnvironmentObject private var updater: AppUpdater
     @Environment(\.openWindow) private var openWindow
     @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.menuBarAccentColour) private var useAccentColour = false
@@ -126,6 +127,11 @@ struct MenuBarPanel: View {
                 PanelButton("Open Citrus Battery") { show(.thisMac) }
                 PanelButton("History…") { show(.history) }
                 SettingsPanelButton(beforeOpening: closePanel)
+                PanelButton("Check for Updates…") {
+                    closePanel()
+                    updater.checkForUpdates()
+                }
+                .disabled(!updater.canCheckForUpdates)
                 Divider().padding(.vertical, 4)
                 PanelButton("Quit Citrus Battery") { NSApp.terminate(nil) }
             }

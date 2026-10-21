@@ -145,7 +145,7 @@ struct CitrusBatteryApp: App {
         // Battery card fit without resizing, and it stays modest on a 13-inch screen.
         .defaultSize(width: 1000, height: 740)
         .commands {
-            AppCommands(monitor: monitor, navigator: navigator, iosDevices: iosDevices)
+            AppCommands(monitor: monitor, navigator: navigator, iosDevices: iosDevices, updater: appDelegate.updater)
         }
 
         WindowGroup("Advanced Viewer", id: "advanced", for: String.self) { $target in
@@ -168,6 +168,7 @@ struct CitrusBatteryApp: App {
                 .environmentObject(monitor)
                 .environmentObject(history)
                 .environmentObject(notifier)
+                .environmentObject(appDelegate.updater)
         }
 
         MenuBarExtra(isInserted: $showInMenuBar) {
@@ -175,6 +176,7 @@ struct CitrusBatteryApp: App {
                 .environmentObject(monitor)
                 .environmentObject(navigator)
                 .environmentObject(iosDevices)
+                .environmentObject(appDelegate.updater)
         } label: {
             MenuBarLabel()
                 .environmentObject(monitor)
@@ -274,6 +276,8 @@ enum Snapshot {
                     MenuBarSnapshotLabel(format: format)
                 }
                 MenuBarPanel()
+                    .environmentObject(AppUpdater())
+                    .environmentObject(IOSDeviceMonitor())
             }
             .padding(8)
             .environmentObject(monitor)

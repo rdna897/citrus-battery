@@ -5,16 +5,23 @@ import ServiceManagement
 /// Applies the Dock icon preference and keeps the app running in the menu bar.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let updater = AppUpdater()
     private var defaultsObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyDockIconPreference()
+        updater.start()
         if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
                 guard NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal }) else {
                     FileHandle.standardError.write(Data("No visible application window after launch\n".utf8))
                     exit(1)
                 }
+                guard self.updater.isAvailable, self.updater.canCheckForUpdates else {
+                    FileHandle.standardError.write(Data("Updater did not start correctly\n".utf8))
+                    exit(1)
+                }
+                print("Citrus updater startup check passed")
                 print("Citrus GUI launch check passed")
                 NSApp.terminate(nil)
             }

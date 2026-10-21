@@ -31,6 +31,10 @@ FRAMEWORKS="$APP/Contents/Frameworks"
 LICENSES="$APP/Contents/Resources/Licenses"
 mkdir -p "$FRAMEWORKS" "$LICENSES"
 cp LICENSE "$LICENSES/CitrusBattery-GPL-3.0.txt"
+SPARKLE=".build/artifacts/sparkle/Sparkle"
+# Preserve framework symlinks, helper executables and upstream code signatures.
+ditto "$SPARKLE/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$FRAMEWORKS/Sparkle.framework"
+cp "$SPARKLE/LICENSE" "$LICENSES/Sparkle-LICENSE.txt"
 is_external() { [[ "$1" == /opt/homebrew/* || "$1" == /usr/local/* ]]; }
 bundle_dependencies() {
     local file="$1"
@@ -65,7 +69,7 @@ done
 
 # Homebrew libraries may require a newer OS than the Swift deployment target.
 # Declare the highest requirement from the executable and every bundled library.
-MIN_MACOS="$(otool -l "$APP/Contents/MacOS/CitrusBattery" "$FRAMEWORKS"/*.dylib | awk '
+MIN_MACOS="$(otool -l "$APP/Contents/MacOS/CitrusBattery" "$FRAMEWORKS"/*.dylib "$FRAMEWORKS/Sparkle.framework/Sparkle" | awk '
     $1 == "cmd" { command = $2 }
     $1 == "minos" { print $2 }
     command == "LC_VERSION_MIN_MACOSX" && $1 == "version" { print $2 }
@@ -96,7 +100,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-    <key>CFBundleVersion</key><string>${BUILD}</string>
+    <key>CFBundleVersion</key><string>${VERSION}</string>
+    <key>CitrusBuildNumber</key><string>${BUILD}</string>
+    <key>SUFeedURL</key><string>https://github.com/rdna897/citrus-battery/releases/latest/download/appcast-$(uname -m).xml</string>
+    <key>SUPublicEDKey</key><string>$(cat assets/update-public-key.txt)</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SURequireSignedFeed</key><true/>
+    <key>SUEnableSystemProfiling</key><false/>
     <key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>

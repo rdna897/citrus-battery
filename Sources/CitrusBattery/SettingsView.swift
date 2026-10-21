@@ -6,6 +6,8 @@ struct SettingsView: View {
         TabView {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
+            UpdateSettings()
+                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
             BatterySettings()
                 .tabItem { Label("Battery", systemImage: "battery.100percent") }
             MenuBarSettings()
@@ -17,6 +19,36 @@ struct SettingsView: View {
         }
         .frame(width: 540)
         .padding(20)
+    }
+}
+
+private struct UpdateSettings: View {
+    @EnvironmentObject private var updater: AppUpdater
+
+    var body: some View {
+        Form {
+            LabeledContent("Installed version:") {
+                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development build")
+            }
+            Toggle("Automatically check for updates", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: updater.setAutomaticallyChecksForUpdates))
+            Toggle("Automatically download and install updates", isOn: Binding(
+                get: { updater.automaticallyDownloadsUpdates },
+                set: updater.setAutomaticallyDownloadsUpdates))
+                .disabled(!updater.automaticallyChecksForUpdates)
+            SettingsNote("Checks GitHub daily. Automatic updates download in the background and install when Citrus Battery quits. You can also install and relaunch from the update window.")
+            if let date = updater.lastUpdateCheckDate {
+                LabeledContent("Last checked:") {
+                    Text(date, format: .dateTime.month().day().hour().minute())
+                }
+            }
+            CheckForUpdatesButton(updater: updater)
+            if !updater.isAvailable {
+                SettingsNote("Updates are available in the packaged application. Download it from GitHub Releases.")
+            }
+        }
+        .disabled(!updater.isAvailable)
     }
 }
 

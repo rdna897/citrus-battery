@@ -8,7 +8,7 @@ It keeps a history of how capacity changes over time, and records everything the
 battery's gauge has logged over its life. It's free, open source, and every feature
 is included.
 
-> **Version 1.0.1.** Data availability varies by hardware and OS version.
+> **Version 1.1.** Data availability varies by hardware and OS version.
 
 ## Download and install
 
@@ -24,7 +24,10 @@ the first launch, and you trust the release, try opening the app and then use
 **System Settings → Privacy & Security → Open Anyway**. See the full
 [installation instructions](docs/INSTALL.md) and
 [Apple's first-launch guidance](https://support.apple.com/en-gb/102445).
-Updates are installed manually.
+From version 1.1, Citrus Battery checks GitHub for updates daily, downloads them
+automatically and installs them when the app quits. Use **Check for Updates…**
+to update and relaunch immediately, or change this behavior in **Settings → Updates**.
+Users of version 1.0.1 or earlier need to install 1.1 manually once.
 
 ## Features
 
@@ -103,7 +106,7 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 | Compact "Classic" layout | — | ✓ | ✓ |
 | Printable information sheet | — | ✓ | ✓ (custom templates) |
 | Online comparison with other devices | — | ✓ | ✓ |
-| Automatic updates | Planned | ✓ | ✓ |
+| Automatic updates | ✓ | ✓ | ✓ |
 
 ## Building
 
@@ -117,7 +120,9 @@ brew install libimobiledevice librsvg
 ```
 
 `scripts/build-app.sh` copies libimobiledevice and its dependencies into the app
-bundle, so the built app runs on Macs without Homebrew. The final app's minimum
+bundle and embeds the pinned Sparkle framework, so the built app runs on Macs
+without Homebrew. Sparkle verifies signed update feeds and downloads before
+installing them. The final app's minimum
 macOS version is determined by the executable and bundled libraries; newer
 Homebrew builds can raise it above macOS 13.
 
@@ -151,6 +156,14 @@ default search path, so pass it explicitly:
 ```bash
 swift test -Xswiftc -plugin-path \
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+```
+
+With a macOS GUI session, test the updater's real signature verification,
+installation and relaunch using disposable apps and an ephemeral signing key:
+
+```bash
+swift package resolve
+python3 scripts/test-updater.py
 ```
 
 ## Layout

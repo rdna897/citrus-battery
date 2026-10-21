@@ -48,17 +48,34 @@ jobs:
           swift --version
       - name: Test
         run: swift test
+      - name: Test updater signatures, installation and relaunch
+        if: matrix.launch_check == 'gui'
+        run: python3 scripts/test-updater.py
       - name: Package ad hoc signed app and sources
         env:
           BUILD: ${{ github.run_number }}
           CITRUS_LAUNCH_CHECK: ${{ matrix.launch_check }}
         run: ./scripts/package-release.sh
+      - name: Sign update archive and feed
+        if: github.event_name != 'pull_request'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -n "$SPARKLE_PRIVATE_KEY" ]]; then
+            ./scripts/generate-update-feed.sh
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "error: configure the SPARKLE_PRIVATE_KEY repository secret before releasing" >&2
+            exit 1
+          else
+            echo "No updater signing key configured; application artifacts only."
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ matrix.arch }}
           path: |
             dist/*.zip
             dist/*.sha256
+            dist/appcast-*.xml
           if-no-files-found: error
 
   release:
@@ -84,10 +101,18 @@ jobs:
             sha256sum -c "$checksum"
           done
           cd ..
+          test -s dist/appcast-arm64.xml
+          test -s dist/appcast-x86_64.xml
           flags=()
           if [[ "${GITHUB_REF_NAME#v}" == 0.* || "$GITHUB_REF_NAME" == *-* ]]; then
             flags+=(--prerelease)
           fi
-          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.sha256 \
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.sha256 dist/appcast-*.xml \
+            --draft \
             --verify-tag --title "Citrus Battery ${GITHUB_REF_NAME#v}" \
             --notes-file docs/RELEASE-NOTES.md "${flags[@]}"
+          # All archives and signed feeds must be available before this becomes
+          # the latest stable release used by installed applications.
+          latest=true
+          if [[ ${#flags[@]} -gt 0 ]]; then latest=false; fi
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest="$latest"

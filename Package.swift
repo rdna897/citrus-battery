@@ -8,6 +8,9 @@ let package = Package(
         .library(name: "CitrusKit", targets: ["CitrusKit"]),
         .executable(name: "CitrusBattery", targets: ["CitrusBattery"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]),
         .target(name: "CPowerUI", linkerSettings: [.linkedFramework("Foundation")]),
@@ -26,7 +29,11 @@ let package = Package(
             dependencies: ["CSMC", "CPowerUI", "CIDevice"],
             linkerSettings: [.linkedFramework("IOKit"), .linkedLibrary("sqlite3")]
         ),
-        .executableTarget(name: "CitrusBattery", dependencies: ["CitrusKit"]),
+        .executableTarget(
+            name: "CitrusBattery",
+            dependencies: ["CitrusKit", .product(name: "Sparkle", package: "Sparkle")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+        ),
         .testTarget(name: "CitrusKitTests", dependencies: ["CitrusKit"]),
     ]
 )

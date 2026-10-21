@@ -7,11 +7,13 @@ struct AppCommands: Commands {
     @ObservedObject var monitor: BatteryMonitor
     @ObservedObject var navigator: Navigator
     @ObservedObject var iosDevices: IOSDeviceMonitor
+    @ObservedObject var updater: AppUpdater
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Citrus Battery") { AboutCitrusBattery.show() }
+            CheckForUpdatesButton(updater: updater)
         }
         CommandGroup(after: .toolbar) {
             Button("Refresh") { monitor.refresh() }
