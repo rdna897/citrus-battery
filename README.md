@@ -140,7 +140,6 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 | Advanced Viewer (SSD health, displays, USB) | ✓ | — | ✓ |
 | Wh units and fast refresh | ✓ | — | ✓ |
 | All 8 temperature units | ✓ | 2 | ✓ |
-| Compact "Classic" layout | — | ✓ | ✓ |
 | Printable information sheet | — | ✓ | ✓ (custom templates) |
 | Online comparison with other devices | — | ✓ | ✓ |
 | Automatic updates | ✓ | ✓ | ✓ |
