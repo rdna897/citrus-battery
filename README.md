@@ -138,7 +138,6 @@ swift test -Xswiftc -plugin-path \
 | `Sources/CitrusKit` | Data layer: battery, power, devices, history, units |
 | `Sources/CitrusBattery` | SwiftUI app |
 | `Tests/CitrusKitTests` | Unit tests, including fixtures from real Apple Silicon and Intel layouts |
-| `docs/FEATURE_SPEC.md` | Feature inventory and implementation notes |
 
 ## License
 

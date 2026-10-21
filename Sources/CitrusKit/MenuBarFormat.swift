@@ -1,7 +1,6 @@
 import Foundation
 
-/// Placeholders for the menu bar status text. The names match coconutBattery's,
-/// so a format copied from it works unchanged.
+/// Placeholders for the menu bar status text.
 public enum MenuBarToken: String, CaseIterable, Identifiable, Sendable {
     case charge = "%CHARGE%"
     case cycles = "%CC%"

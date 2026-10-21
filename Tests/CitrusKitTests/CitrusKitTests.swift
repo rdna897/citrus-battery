@@ -165,7 +165,7 @@ struct FakeSMC: SMCReading {
         #expect(MacBatterySnapshot.decodePackedDate(55182682501939) == nil)
     }
 
-    @Test func estimateMatchesCoconutBattery() {
+    @Test func estimateFromOperatingHours() {
         // M4 MacBook Air, 2026-10-19: 10,424 operating hours, recorded week 33.
         let now = Self.day(2026, 10, 19)
         let withWeek = BatteryOrigin.estimatedManufactureDate(
@@ -202,7 +202,7 @@ struct FakeSMC: SMCReading {
 
     let now = ManufactureDateTests.day(2026, 10, 21)
 
-    @Test func followsCoconutBatteryWithoutEstimate() {
+    @Test func usesFixedTableWithoutEstimate() {
         // Digit 9 → 2019, week 41 → Monday 7 October.
         #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "D869414A9LHKLHVAG", now: now))
             == DateComponents(year: 2019, month: 10, day: 7))
@@ -218,7 +218,7 @@ struct FakeSMC: SMCReading {
     }
 
     @Test func operatingTimeEstimatePicksTheDecade() {
-        // coconutBattery's table would say 2014; the estimate says this decade.
+        // The fixed table would say 2014; the estimate says this decade.
         let estimate = ManufactureDateTests.day(2024, 2, 20)
         #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "ABC4100000000000X", estimate: estimate, now: now))
             == DateComponents(year: 2024, month: 3, day: 4))
@@ -373,7 +373,7 @@ struct FakeSMC: SMCReading {
 }
 
 @Suite struct CoconutBatteryImportTests {
-    /// Builds a backup the way coconutBattery does: JSON → LZFSE → AES-GCM.
+    /// Builds a backup in the `.ccba` format: JSON → LZFSE → AES-GCM.
     static func makeBackup(_ records: [[String: Any]], key: SymmetricKey) throws -> Data {
         let json = try JSONSerialization.data(withJSONObject: records)
         let compressed = try (json as NSData).compressed(using: .lzfse) as Data

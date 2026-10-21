@@ -1,12 +1,12 @@
 import CryptoKit
 import Foundation
 
-/// Reads coconutBattery history backups (`.ccba` files).
+/// Reads history backups in the `.ccba` format.
 ///
 /// A backup is an AES-GCM sealed box (nonce, ciphertext, tag) whose plaintext is
 /// LZFSE-compressed JSON: an array of entries keyed like `"Battery.FCC"`. The
-/// encryption key is embedded in coconutBattery itself. Citrus Battery doesn't
-/// ship that key; it reads candidates from the installed app and lets AES-GCM's
+/// encryption key is embedded in the app that wrote the backup. Citrus Battery doesn't
+/// ship that key; it reads candidates from that installed app and lets AES-GCM's
 /// authentication tag identify the right one.
 public enum CoconutBatteryBackup {
     public enum ImportError: Error, LocalizedError {
@@ -30,7 +30,7 @@ public enum CoconutBatteryBackup {
 
     public static let defaultAppURL = URL(fileURLWithPath: "/Applications/coconutBattery.app")
 
-    /// Decodes a backup using keys found in the installed coconutBattery app.
+    /// Decodes a backup using keys found in the installed app that wrote it.
     public static func entries(from backup: Data, appURL: URL = defaultAppURL) throws -> [HistoryEntry] {
         let executable = appURL.appendingPathComponent("Contents/MacOS/coconutBattery")
         guard let binary = try? Data(contentsOf: executable, options: .mappedIfSafe) else {
@@ -80,8 +80,8 @@ public enum CoconutBatteryBackup {
         return keys
     }
 
-    /// Drops capacities that can't be mAh values. coconutBattery 4.0 on macOS 27
-    /// saved full charge = 100 (a percentage) and design = -1 (missing).
+    /// Drops capacities that can't be mAh values. Some backups (data version 4.0,
+    /// macOS 27) saved full charge = 100 (a percentage) and design = -1 (missing).
     static func plausibleCapacities(design: Int?, fullCharge: Int?) -> (design: Int?, fullCharge: Int?) {
         let design = design.flatMap { $0 > 100 ? $0 : nil }
         let fullCharge = fullCharge.flatMap { $0 > 100 ? $0 : nil }

@@ -83,7 +83,7 @@ private func dumpIOSDevices() {
     }
 }
 
-/// `CitrusBattery --import-coconutbattery backup.ccba` adds a coconutBattery backup to the history.
+/// `CitrusBattery --import-coconutbattery backup.ccba` adds a `.ccba` backup to the history.
 private func importCoconutBattery(path: String) {
     do {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))

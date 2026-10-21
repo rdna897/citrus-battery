@@ -152,7 +152,7 @@ final class HistoryController: ObservableObject {
         return added
     }
 
-    /// Imports a coconutBattery `.ccba` backup. Returns the number of entries added.
+    /// Imports a `.ccba` backup. Returns the number of entries added.
     func importCoconutBatteryBackup(_ data: Data) -> Int {
         var added = 0
         perform {

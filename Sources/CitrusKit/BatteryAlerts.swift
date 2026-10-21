@@ -65,7 +65,7 @@ public struct BatteryReading: Sendable, Equatable {
 }
 
 public enum BatteryAlertRules {
-    /// Minimum gap between repeats of the same alert (coconutBattery uses 15 minutes).
+    /// Minimum gap between repeats of the same alert.
     public static let minimumRepeatInterval: TimeInterval = 900
 
     /// Alerts to post for this reading, and the updated state.

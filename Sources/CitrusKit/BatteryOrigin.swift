@@ -35,7 +35,7 @@ public enum BatteryOrigin {
 
     /// Estimates when the pack was made from its powered-on hours.
     ///
-    /// This is the method coconutBattery uses (today − operating hours). When the
+    /// The estimate is today − operating hours. When the
     /// battery also records its manufacture week (which carries no year), the
     /// estimate picks the year and the recorded week gives the exact Monday.
     public static func estimatedManufactureDate(
@@ -74,7 +74,7 @@ public enum BatteryOrigin {
 
     // MARK: 17-character battery serial
 
-    /// coconutBattery's year for each digit, used when there's no operating-time estimate.
+    /// The usual year for each digit, used when there's no operating-time estimate.
     private static let serialYears = [0: 2020, 1: 2021, 2: 2022, 3: 2023, 4: 2014,
                                       5: 2015, 6: 2016, 7: 2017, 8: 2018, 9: 2019]
 
@@ -82,8 +82,8 @@ public enum BatteryOrigin {
     /// position 4 is the last digit of the year, positions 5–6 the ISO week.
     ///
     /// The serial only gives the year within a decade. With an operating-time
-    /// `estimate`, the decade closest to it wins. Without one, this follows
-    /// coconutBattery: digits 0–3 are the 2020s, 4–9 the 2010s, a "2023" pack
+    /// `estimate`, the decade closest to it wins. Without one, digits 0–3 are the
+    /// 2020s, 4–9 the 2010s, a "2023" pack
     /// with over 300 cycles is from 2013, and a date in the future moves back ten years.
     public static func serialManufactureDate(
         serial: String, estimate: Date? = nil, cycleCount: Int? = nil, now: Date = Date()

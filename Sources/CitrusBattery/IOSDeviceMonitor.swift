@@ -38,7 +38,7 @@ final class IOSDeviceMonitor: ObservableObject {
     @Published private(set) var devices: [TrackedDevice] = []
     @Published private(set) var isRefreshing = false
 
-    /// coconutBattery hides devices it hasn't heard from for an hour.
+    /// Devices not heard from for an hour are hidden.
     static let staleInterval: TimeInterval = 3600
     private static let pollInterval: TimeInterval = 30
 
