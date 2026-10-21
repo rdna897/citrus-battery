@@ -15,6 +15,8 @@ public struct BatteryLifetime: Sendable, Equatable {
     public var temperatureSamples: Int?
     /// Cycle count when the gauge last recalibrated its capacity estimate (Qmax).
     public var cycleCountAtLastCalibration: Int?
+    /// When the gauge last wrote these statistics.
+    public var updated: Date?
 
     public init(dictionary d: [String: Any]) {
         func int(_ key: String) -> Int? { MacBatterySnapshot.int(d[key]) }
@@ -28,6 +30,8 @@ public struct BatteryLifetime: Sendable, Equatable {
         maximumDischargeCurrentMilliamps = int("MaximumDischargeCurrent")
         temperatureSamples = int("TemperatureSamples")
         cycleCountAtLastCalibration = int("CycleCountLastQmax")
+        // Unix seconds; 0 when not recorded.
+        updated = int("UpdateTime").flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil }
     }
 
     /// Gauges mix whole degrees and tenths of a degree: an M4 Mac stores min/max in

@@ -52,6 +52,8 @@ final class Navigator: ObservableObject {
     // CITRUS_DEBUG_OPEN=history starts on History (used for UI captures).
     @Published var selection: SidebarItem? =
         ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "history" ? .history : .thisMac
+    /// Device shown in the Battery Lifetime Data window: `AdvancedTarget.mac` or a UDID.
+    @Published var lifetimeTarget: String = AdvancedTarget.mac
 }
 
 extension UserDefaults {

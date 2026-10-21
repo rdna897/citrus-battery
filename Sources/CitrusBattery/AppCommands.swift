@@ -20,6 +20,11 @@ struct AppCommands: Commands {
                 .keyboardShortcut("y")
             Button("Advanced Viewer") { openWindow(id: "advanced", value: advancedTarget) }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            Button("Battery Lifetime Data") {
+                navigator.lifetimeTarget = advancedTarget
+                openWindow(id: "lifetime")
+            }
+                .keyboardShortcut("l", modifiers: [.command, .option])
         }
         CommandGroup(replacing: .help) {
             Button("Find Replacement Battery…") {
@@ -50,11 +55,12 @@ struct AppCommands: Commands {
     }
 }
 
-/// citrusbattery://mac, //history, //device/<udid>, //advanced[/<udid>]
+/// citrusbattery://mac, //history, //device/<udid>, //advanced[/<udid>], //lifetime[/<udid>]
 enum CitrusURL {
     enum Route: Equatable {
         case select(SidebarItem)
         case advanced(String)
+        case lifetime(String)
     }
 
     static func route(_ url: URL) -> Route? {
@@ -65,6 +71,7 @@ enum CitrusURL {
         case "history": return .select(.history)
         case "device": return id.map { .select(.device($0)) }
         case "advanced": return .advanced(id ?? AdvancedTarget.mac)
+        case "lifetime": return .lifetime(id ?? AdvancedTarget.mac)
         default: return nil
         }
     }

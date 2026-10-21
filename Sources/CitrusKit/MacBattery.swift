@@ -65,6 +65,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     /// Estimated from operating hours (and the manufacture week, if recorded)
     /// when the battery stores no full date.
     public var estimatedManufactureDate: Date?
+    /// Decoded from a 17-character battery serial, when the battery stores no full date.
+    public var serialManufactureDate: Date?
     public var lifetime: BatteryLifetime?
     /// When the device was first set up, if the gauge recorded it.
     public var firstUseDate: Date?
@@ -99,6 +101,24 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var batteryPowerWatts: Double? {
         guard let voltageMillivolts, let amperageMilliamps else { return nil }
         return Double(voltageMillivolts) * Double(amperageMilliamps) / 1_000_000
+    }
+
+    /// Where a manufacture date came from, best first.
+    public enum ManufactureDateSource: Sendable, Equatable {
+        /// Stored by the battery (Intel Macs).
+        case recorded
+        /// Decoded from the battery serial.
+        case serialNumber
+        /// Today minus operating hours.
+        case operatingTime
+    }
+
+    /// The most reliable manufacture date available.
+    public var bestManufactureDate: (date: Date, source: ManufactureDateSource)? {
+        if let date = manufactureDate.flatMap({ Calendar.current.date(from: $0) }) { return (date, .recorded) }
+        if let serialManufactureDate { return (serialManufactureDate, .serialNumber) }
+        if let estimatedManufactureDate { return (estimatedManufactureDate, .operatingTime) }
+        return nil
     }
 
     /// Cycles since the gauge last recalibrated its capacity estimate.
@@ -212,6 +232,10 @@ extension MacBatterySnapshot {
             if let hours = lifetime?.totalOperatingHours {
                 estimatedManufactureDate = BatteryOrigin.estimatedManufactureDate(
                     operatingHours: hours, week: week, now: date)
+            }
+            if let serialNumber {
+                serialManufactureDate = BatteryOrigin.serialManufactureDate(
+                    serial: serialNumber, estimate: estimatedManufactureDate, cycleCount: cycleCount, now: date)
             }
         }
         // Seconds since 2001 (Apple's reference date); 0 when not recorded.

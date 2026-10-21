@@ -195,6 +195,68 @@ struct FakeSMC: SMCReading {
     }
 }
 
+@Suite struct SerialManufactureDateTests {
+    static func ymd(_ date: Date?) -> DateComponents? {
+        date.map { ManufactureDateTests.utc.dateComponents([.year, .month, .day], from: $0) }
+    }
+
+    let now = ManufactureDateTests.day(2026, 10, 21)
+
+    @Test func followsCoconutBatteryWithoutEstimate() {
+        // Digit 9 → 2019, week 41 → Monday 7 October.
+        #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "D869414A9LHKLHVAG", now: now))
+            == DateComponents(year: 2019, month: 10, day: 7))
+        // Digit 3 → 2023, or 2013 for a well-used pack.
+        #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "ABC3100000000000X", cycleCount: 12, now: now))
+            == DateComponents(year: 2023, month: 3, day: 6))
+        #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "ABC3100000000000X", cycleCount: 450, now: now))
+            == DateComponents(year: 2013, month: 3, day: 4))
+        // A date in the future moves back a decade.
+        #expect(Self.ymd(BatteryOrigin.serialManufactureDate(
+            serial: "ABC2100000000000X", now: ManufactureDateTests.day(2021, 1, 1)))
+            == DateComponents(year: 2012, month: 3, day: 5))
+    }
+
+    @Test func operatingTimeEstimatePicksTheDecade() {
+        // coconutBattery's table would say 2014; the estimate says this decade.
+        let estimate = ManufactureDateTests.day(2024, 2, 20)
+        #expect(Self.ymd(BatteryOrigin.serialManufactureDate(serial: "ABC4100000000000X", estimate: estimate, now: now))
+            == DateComponents(year: 2024, month: 3, day: 4))
+    }
+
+    @Test func rejectsOtherFormats() {
+        #expect(BatteryOrigin.serialManufactureDate(serial: "F8YHK2000630000G43", now: now) == nil)  // 18 chars
+        #expect(BatteryOrigin.serialManufactureDate(serial: "ABCX100000000000X", now: now) == nil)  // no digit
+        #expect(BatteryOrigin.serialManufactureDate(serial: "ABC9600000000000X", now: now) == nil)  // week 60
+    }
+}
+
+@Suite struct LifetimeReportTests {
+    @Test func listsLifetimeValues() {
+        var registry = SnapshotTests.appleSilicon
+        registry["LifetimeData"] = ["TotalOperatingTime": 10_465, "MaximumTemperature": 38, "MinimumTemperature": 6,
+                                    "AverageTemperature": 212, "MaximumChargeCurrent": 5400,
+                                    "MaximumDischargeCurrent": -3140, "TemperatureSamples": 167_440,
+                                    "CycleCountLastQmax": 40, "UpdateTime": 1_792_583_594]
+        let snapshot = MacBatterySnapshot(registry: registry, pack: [:], smc: nil, powerSource: nil,
+                                          date: ManufactureDateTests.day(2026, 10, 21))
+        let rows = LifetimeReport.rows(for: snapshot, temperatureUnit: .celsius)
+        let values = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0.value) })
+        #expect(values["Minimum temperature"] == "6.0°C")
+        #expect(values["Average temperature"] == "21.2°C")
+        #expect(values["Battery failures"] == "None")
+        #expect(values["Maximum discharge current"]?.hasPrefix("3140 mA (") == true)
+        #expect(values["Gauge last calibrated"]?.hasPrefix("At cycle 40") == true)
+        #expect(values["Lifetime data updated"] != nil)
+    }
+
+    @Test func emptyWithoutLifetimeData() {
+        let snapshot = MacBatterySnapshot(registry: SnapshotTests.appleSilicon, pack: [:], smc: nil,
+                                          powerSource: nil, date: Date())
+        #expect(LifetimeReport.rows(for: snapshot, temperatureUnit: .celsius).isEmpty)
+    }
+}
+
 @Suite struct ChargeLimitTests {
     @Test func noLimitGivesNoAdvice() {
         #expect(ChargeLimitStatus(optimizedChargingEnabled: true).advice(cyclesSinceCalibration: 3) == nil)

@@ -72,6 +72,49 @@ public enum BatteryOrigin {
         return ManufactureWeek(week: week, month: month)
     }
 
+    // MARK: 17-character battery serial
+
+    /// coconutBattery's year for each digit, used when there's no operating-time estimate.
+    private static let serialYears = [0: 2020, 1: 2021, 2: 2022, 3: 2023, 4: 2014,
+                                      5: 2015, 6: 2016, 7: 2017, 8: 2018, 9: 2019]
+
+    /// Manufacture date (Monday of the week) from a 17-character battery serial:
+    /// position 4 is the last digit of the year, positions 5–6 the ISO week.
+    ///
+    /// The serial only gives the year within a decade. With an operating-time
+    /// `estimate`, the decade closest to it wins. Without one, this follows
+    /// coconutBattery: digits 0–3 are the 2020s, 4–9 the 2010s, a "2023" pack
+    /// with over 300 cycles is from 2013, and a date in the future moves back ten years.
+    public static func serialManufactureDate(
+        serial: String, estimate: Date? = nil, cycleCount: Int? = nil, now: Date = Date()
+    ) -> Date? {
+        let characters = Array(serial.trimmingCharacters(in: .whitespaces))
+        guard characters.count == 17,
+              let digit = characters[3].wholeNumberValue, characters[3].isASCII,
+              let week = Int(String(characters[4...5])), (1...53).contains(week)
+        else { return nil }
+
+        var iso = Calendar(identifier: .iso8601)
+        iso.timeZone = TimeZone(identifier: "UTC")!
+        func monday(_ year: Int) -> Date? {
+            let date = iso.date(from: DateComponents(weekday: 2, weekOfYear: week, yearForWeekOfYear: year))
+            // Week 53 only exists in some years; reject dates that rolled into the next year.
+            return date.flatMap { iso.component(.yearForWeekOfYear, from: $0) == year ? $0 : nil }
+        }
+
+        if let estimate {
+            let around = iso.component(.year, from: estimate)
+            let years = (around - 10...around + 10).filter { (($0 % 10) + 10) % 10 == digit }
+            return years.compactMap(monday).filter { $0 <= now }
+                .min { abs($0.timeIntervalSince(estimate)) < abs($1.timeIntervalSince(estimate)) }
+        }
+
+        guard var year = serialYears[digit] else { return nil }
+        if year == 2023, let cycleCount, cycleCount > 300 { year = 2013 }
+        guard let date = monday(year) else { return nil }
+        return date > now ? monday(year - 10) : date
+    }
+
     // MARK: Mac serial date code
 
     private static let yearCodes = Array("CDFGHJKLMNPQRSTVWXYZ")

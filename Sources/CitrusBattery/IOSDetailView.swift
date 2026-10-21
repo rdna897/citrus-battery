@@ -48,7 +48,8 @@ struct IOSDetailContent: View {
                 if let battery = snapshot.battery {
                     batteryCard(battery)
                     if let lifetime = battery.lifetime {
-                        LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration)
+                        LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration,
+                                     target: device.udid)
                     }
                     detailsCard(snapshot, battery: battery)
                 } else {
@@ -152,9 +153,8 @@ struct IOSDetailContent: View {
                 InfoRow("Serial number", snapshot.serialNumber, hidesWhenEmpty: true)
                 InfoRow("Battery serial", battery?.serialNumber, hidesWhenEmpty: true)
                 InfoRow("Battery manufacturer", battery?.manufacturer, hidesWhenEmpty: true)
-                InfoRow("Manufactured", battery?.estimatedManufactureDate.map {
-                    "\($0.formatted(date: .abbreviated, time: .omitted)) (estimated)"
-                }, hidesWhenEmpty: true)
+                InfoRow("Manufactured", battery?.bestManufactureDate.map(ManufactureDateText.format),
+                        hidesWhenEmpty: true)
                 InfoRow("First used", battery?.firstUseDate?.formatted(date: .abbreviated, time: .omitted),
                         hidesWhenEmpty: true)
                 InfoRow("Full charge capacity", capacity(battery?.fullChargeCapacity, battery), hidesWhenEmpty: true)

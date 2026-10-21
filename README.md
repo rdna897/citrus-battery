@@ -13,8 +13,8 @@ does, including the features it sells as "Plus". Nothing is paywalled.
 
 - Live Mac battery readings: charge, health (full-charge ÷ design capacity), cycle
   count, temperature, voltage, amperage, time remaining, adapter details, cell
-  manufacturer, manufacture date (or week, where the battery records no year), and
-  decoded permanent-failure flags.
+  manufacturer, manufacture date (recorded, decoded from a 17-character battery serial,
+  or estimated from operating time), and decoded permanent-failure flags.
 - Power readings from the SMC: system usage, 1-minute maximum, adapter input,
   charging/discharging watts, CPU temperature, and a live power chart.
 - Charge limits: macOS Charge Limit and Optimized Battery Charging, plus running
@@ -37,7 +37,11 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   manufacture date from the serial number.
 - A low-health notice below 80% with a replacement search (iFixit), Help → Find
   Replacement Battery and Copy Diagnostic Report, View → History (⌘Y) and Advanced
-  Viewer (⌥⌘I), and `citrusbattery://mac|history|device/<udid>|advanced[/<udid>]` links.
+  Viewer (⌥⌘I), and `citrusbattery://mac|history|device/<udid>|advanced[/<udid>]|lifetime[/<udid>]` links.
+- Battery Lifetime Data window (View menu, ⌥⌘L, or "Lifetime Details…" on a device page):
+  operating time, age, temperature and pack-voltage extremes, peak charge and discharge
+  current (also as a C-rate), temperature samples, last gauge calibration and failures,
+  for the Mac and each iPhone/iPad, with copy.
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
 - iPhone and iPad: devices connected by USB, or over Wi-Fi when "Show this iPhone when

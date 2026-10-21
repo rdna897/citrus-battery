@@ -138,6 +138,14 @@ struct CitrusBatteryApp: App {
         }
         .defaultSize(width: 720, height: 640)
 
+        Window("Battery Lifetime Data", id: "lifetime") {
+            LifetimeAnalyzer()
+                .environmentObject(monitor)
+                .environmentObject(iosDevices)
+                .environmentObject(navigator)
+        }
+        .defaultSize(width: 680, height: 560)
+
         Settings {
             SettingsView()
                 .environmentObject(monitor)
@@ -257,6 +265,7 @@ enum Snapshot {
         default:
             view = AnyView(MacDetailContent()
                 .environmentObject(monitor)
+                .environmentObject(Navigator())
                 .frame(width: 720)
                 .background(Color(nsColor: .windowBackgroundColor)))
         }

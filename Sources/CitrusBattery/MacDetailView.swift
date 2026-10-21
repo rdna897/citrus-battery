@@ -29,7 +29,8 @@ struct MacDetailContent: View {
                     failuresSection(battery.failures)
                 }
                 if let lifetime = battery.lifetime {
-                    LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration)
+                    LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration,
+                                 target: AdvancedTarget.mac)
                 }
                 detailsSection(battery)
             } else {
@@ -216,20 +217,14 @@ struct MacDetailContent: View {
     }
 
     private func manufactureText(_ battery: MacBatterySnapshot) -> String? {
-        if let date = battery.manufactureDate.flatMap(dateText) { return date }
-        if let estimate = battery.estimatedManufactureDate {
-            let date = estimate.formatted(date: .abbreviated, time: .omitted)
-            return "\(date) (estimated)"
-        }
+        if let best = battery.bestManufactureDate { return ManufactureDateText.format(best) }
         guard let week = battery.manufactureWeek else { return nil }
         let month = Calendar.current.monthSymbols[week.month - 1]
         return "Week \(week.week) (\(month)), year not recorded"
     }
 
     private func ageText(_ battery: MacBatterySnapshot) -> String? {
-        let start = battery.manufactureDate.flatMap { Calendar.current.date(from: $0) }
-            ?? battery.estimatedManufactureDate
-        guard let start else { return nil }
+        guard let start = battery.bestManufactureDate?.date else { return nil }
         let days = Calendar.current.dateComponents([.day], from: start, to: battery.date).day ?? 0
         return "\(days) days"
     }
@@ -271,10 +266,20 @@ struct DeviceIcon: View {
     }
 }
 
+enum ManufactureDateText {
+    /// "11 Aug 2025", marked "(estimated)" when it comes from operating time.
+    static func format(_ best: (date: Date, source: MacBatterySnapshot.ManufactureDateSource)) -> String {
+        let date = best.date.formatted(date: .abbreviated, time: .omitted)
+        return best.source == .operatingTime ? "\(date) (estimated)" : date
+    }
+}
+
 /// Gas-gauge lifetime statistics; shared by the Mac and iPhone/iPad pages.
 struct LifetimeCard: View {
     let lifetime: BatteryLifetime
     let cyclesSinceCalibration: Int?
+    /// Device for the "Lifetime Details…" button.
+    let target: String
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
 
     var body: some View {
@@ -297,6 +302,8 @@ struct LifetimeCard: View {
                     $0 == 0 ? "This cycle" : "\($0) cycle\($0 == 1 ? "" : "s") ago"
                 }, hidesWhenEmpty: true)
             }
+            LifetimeDetailsButton(target: target)
+                .controlSize(.small)
         }
     }
 

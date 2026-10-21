@@ -70,6 +70,9 @@ struct ContentView: View {
         switch CitrusURL.route(url) {
         case let .select(item): navigator.selection = item
         case let .advanced(target): openWindow(id: "advanced", value: target)
+        case let .lifetime(target):
+            navigator.lifetimeTarget = target
+            openWindow(id: "lifetime")
         case nil: break
         }
     }
