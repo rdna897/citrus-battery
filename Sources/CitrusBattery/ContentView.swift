@@ -7,11 +7,11 @@ enum SidebarItem: Hashable {
 
 struct ContentView: View {
     @EnvironmentObject private var monitor: BatteryMonitor
-    @ViewState private var selection: SidebarItem? = .thisMac
+    @EnvironmentObject private var navigator: Navigator
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selection) {
+            List(selection: $navigator.selection) {
                 Section("Devices") {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
@@ -32,7 +32,7 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
-            switch selection {
+            switch navigator.selection {
             case .thisMac, nil:
                 MacDetailView()
             case .history:

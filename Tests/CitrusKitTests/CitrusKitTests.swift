@@ -379,3 +379,90 @@ struct FakeSMC: SMCReading {
         #expect(entry?.healthFraction == nil)
     }
 }
+
+@Suite struct MenuBarFormatTests {
+    static let values = MenuBarValues(
+        chargeFraction: 0.764, cycleCount: 46, temperatureText: "24.6°C", healthFraction: 0.98,
+        timeRemainingMinutes: 165, isCharging: false, systemWatts: 4.21, batteryWatts: -3.14, chargerWatts: 20)
+
+    @Test func rendersEveryToken() {
+        let format = MenuBarToken.allCases.map(\.rawValue).joined(separator: " ")
+        #expect(MenuBarFormatter.render(format, values: Self.values)
+            == "76% 46 24.6°C 98% 2:45 Battery 4.2 W −3.1 W 20 W")
+    }
+
+    @Test func missingValuesAndStates() {
+        var values = MenuBarValues(isCharging: true, isExternalPowerConnected: true)
+        #expect(MenuBarFormatter.render("%CHARGE% %STATUS%", values: values) == "– Charging")
+        values.isFullyCharged = true
+        #expect(MenuBarFormatter.render("%TIMEREM% %STATUS%", values: values) == "Full Full")
+        #expect(MenuBarFormatter.render("Bat: %CHARGE%", values: Self.values) == "Bat: 76%")
+    }
+}
+
+@Suite struct BatteryAlertTests {
+    static let settings = BatteryAlertSettings(lowChargePercent: 20, lowTimeMinutes: 30, fullyCharged: true)
+    static let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    static func onBattery(_ percent: Int, minutes: Int? = 90) -> BatteryReading {
+        BatteryReading(chargePercent: percent, timeToEmptyMinutes: minutes,
+                       isExternalPowerConnected: false, isFullyCharged: false)
+    }
+
+    @Test func lowChargeFiresOncePerDischarge() {
+        var state = BatteryAlertState()
+        var (alerts, next) = BatteryAlertRules.evaluate(Self.onBattery(25), settings: Self.settings, state: state, now: Self.t0)
+        #expect(alerts.isEmpty)
+        state = next
+        (alerts, next) = BatteryAlertRules.evaluate(Self.onBattery(19), settings: Self.settings, state: state, now: Self.t0)
+        #expect(alerts == [.lowCharge(percent: 19)])
+        state = next
+        // Still low an hour later: no repeat until power is connected.
+        (alerts, next) = BatteryAlertRules.evaluate(Self.onBattery(12), settings: Self.settings, state: state,
+                                                    now: Self.t0.addingTimeInterval(3600))
+        #expect(alerts.isEmpty)
+        state = next
+        // Plug in, unplug: re-armed, and 15 minutes have passed.
+        let plugged = BatteryReading(chargePercent: 13, timeToEmptyMinutes: nil, isExternalPowerConnected: true, isFullyCharged: false)
+        state = BatteryAlertRules.evaluate(plugged, settings: Self.settings, state: state, now: Self.t0.addingTimeInterval(3700)).1
+        (alerts, _) = BatteryAlertRules.evaluate(Self.onBattery(13), settings: Self.settings, state: state,
+                                                 now: Self.t0.addingTimeInterval(3800))
+        #expect(alerts == [.lowCharge(percent: 13)])
+    }
+
+    @Test func repeatNeedsFifteenMinutes() {
+        var state = BatteryAlertState()
+        state = BatteryAlertRules.evaluate(Self.onBattery(19), settings: Self.settings, state: state, now: Self.t0).1
+        let plugged = BatteryReading(chargePercent: 19, timeToEmptyMinutes: nil, isExternalPowerConnected: true, isFullyCharged: false)
+        state = BatteryAlertRules.evaluate(plugged, settings: Self.settings, state: state, now: Self.t0.addingTimeInterval(60)).1
+        let (alerts, _) = BatteryAlertRules.evaluate(Self.onBattery(19), settings: Self.settings, state: state,
+                                                     now: Self.t0.addingTimeInterval(120))
+        #expect(alerts.isEmpty)
+    }
+
+    @Test func lowTime() {
+        let (alerts, _) = BatteryAlertRules.evaluate(Self.onBattery(50, minutes: 25), settings: Self.settings,
+                                                     state: BatteryAlertState(), now: Self.t0)
+        #expect(alerts == [.lowTime(minutes: 25)])
+    }
+
+    @Test func fullyChargedFiresAfterChargingNotAtLaunch() {
+        let full = BatteryReading(chargePercent: 100, timeToEmptyMinutes: nil, isExternalPowerConnected: true, isFullyCharged: true)
+        let charging = BatteryReading(chargePercent: 98, timeToEmptyMinutes: nil, isExternalPowerConnected: true, isFullyCharged: false)
+        // Launched while already full: quiet.
+        var (alerts, state) = BatteryAlertRules.evaluate(full, settings: Self.settings, state: BatteryAlertState(), now: Self.t0)
+        #expect(alerts.isEmpty)
+        // Discharge a little, charge back to full: one alert.
+        state = BatteryAlertRules.evaluate(charging, settings: Self.settings, state: state, now: Self.t0).1
+        (alerts, state) = BatteryAlertRules.evaluate(full, settings: Self.settings, state: state, now: Self.t0)
+        #expect(alerts == [.fullyCharged])
+        (alerts, _) = BatteryAlertRules.evaluate(full, settings: Self.settings, state: state, now: Self.t0)
+        #expect(alerts.isEmpty)
+    }
+
+    @Test func disabledAlertsStayQuiet() {
+        let (alerts, _) = BatteryAlertRules.evaluate(Self.onBattery(5, minutes: 5), settings: BatteryAlertSettings(),
+                                                     state: BatteryAlertState(), now: Self.t0)
+        #expect(alerts.isEmpty)
+    }
+}

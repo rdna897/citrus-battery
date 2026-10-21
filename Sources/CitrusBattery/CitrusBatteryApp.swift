@@ -14,7 +14,8 @@ enum Entry {
             return
         }
         if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
-            MainActor.assumeIsolated { Snapshot.render(to: URL(fileURLWithPath: arguments[index + 1])) }
+            let kind = index + 2 < arguments.count ? arguments[index + 2] : "main"
+            MainActor.assumeIsolated { Snapshot.render(to: URL(fileURLWithPath: arguments[index + 1]), kind: kind) }
             return
         }
         CitrusBatteryApp.main()
@@ -34,20 +35,26 @@ private func importCoconutBattery(path: String) {
 }
 
 struct CitrusBatteryApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var monitor: BatteryMonitor
     @StateObject private var history: HistoryController
+    @StateObject private var notifier: Notifier
+    @StateObject private var navigator = Navigator()
+    @AppStorage(PreferenceKey.showInMenuBar) private var showInMenuBar = true
 
     init() {
         let monitor = BatteryMonitor()
         _monitor = StateObject(wrappedValue: monitor)
         _history = StateObject(wrappedValue: HistoryController(monitor: monitor))
+        _notifier = StateObject(wrappedValue: Notifier(monitor: monitor))
     }
 
     var body: some Scene {
-        WindowGroup("Citrus Battery") {
+        WindowGroup("Citrus Battery", id: "main") {
             ContentView()
                 .environmentObject(monitor)
                 .environmentObject(history)
+                .environmentObject(navigator)
                 .frame(minWidth: 760, minHeight: 520)
         }
         .commands {
@@ -59,8 +66,20 @@ struct CitrusBatteryApp: App {
 
         Settings {
             SettingsView()
+                .environmentObject(monitor)
                 .environmentObject(history)
+                .environmentObject(notifier)
         }
+
+        MenuBarExtra(isInserted: $showInMenuBar) {
+            MenuBarPanel()
+                .environmentObject(monitor)
+                .environmentObject(navigator)
+        } label: {
+            MenuBarLabel()
+                .environmentObject(monitor)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -126,17 +145,32 @@ enum DiagnosticDump {
 /// (for screenshots and visual checks without Screen Recording permission).
 @MainActor
 enum Snapshot {
-    static func render(to url: URL) {
+    static func render(to url: URL, kind: String) {
         let monitor = BatteryMonitor()
         // Collect a few samples so the power chart has a line to draw.
         for _ in 0..<12 {
             RunLoop.main.run(until: Date().addingTimeInterval(0.25))
             monitor.refresh()
         }
-        let view = MacDetailContent()
+        let view: AnyView
+        switch kind {
+        case "panel":
+            view = AnyView(VStack(alignment: .leading, spacing: 12) {
+                ForEach(["%CHARGE%", "%CHARGE% %TIMEREM%", "%SYSWATT% · %CUSTEMP%"], id: \.self) { format in
+                    MenuBarSnapshotLabel(format: format)
+                }
+                MenuBarPanel()
+            }
+            .padding(8)
             .environmentObject(monitor)
-            .frame(width: 720)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .environmentObject(Navigator())
+            .background(Color(nsColor: .windowBackgroundColor)))
+        default:
+            view = AnyView(MacDetailContent()
+                .environmentObject(monitor)
+                .frame(width: 720)
+                .background(Color(nsColor: .windowBackgroundColor)))
+        }
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         guard let image = renderer.nsImage,
@@ -152,5 +186,17 @@ enum Snapshot {
         } catch {
             Swift.print("Could not write \(url.path): \(error.localizedDescription)")
         }
+    }
+}
+
+/// A menu bar label with a fixed format, for snapshots.
+private struct MenuBarSnapshotLabel: View {
+    let format: String
+    @EnvironmentObject private var monitor: BatteryMonitor
+
+    var body: some View {
+        Text(Image(systemName: MenuBarLabel.symbolName(for: monitor.battery))) + Text(" ")
+            + Text(MenuBarFormatter.render(format, values: monitor.menuBarValues(
+                temperatureUnit: .celsius, capacityStyle: .raw)))
     }
 }

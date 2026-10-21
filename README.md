@@ -5,8 +5,8 @@
 An open-source battery monitor for macOS, aiming to cover everything coconutBattery
 does, including the features it sells as "Plus". Nothing is paywalled.
 
-> **Status:** early. The Mac battery view and history work; iPhone/iPad support, the
-> menu bar app and the rest are planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
+> **Status:** early. The Mac battery view, history, menu bar and notifications work;
+> iPhone/iPad support and the rest are planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
 > for the full feature list and build order.
 
 ## What works today
@@ -23,6 +23,12 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   switch), History window with a health chart, sortable table, copy, delete, JSON
   backup export/import, and import of coconutBattery backups (`.ccba`, needs
   coconutBattery installed because the file is encrypted with a key built into it). Stored in `~/Library/Application Support/Citrus Battery/`.
+- Menu bar: customisable status text using coconutBattery's placeholders (`%CHARGE%`,
+  `%CC%`, `%CUSTEMP%`, `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`,
+  `%CHARGER%`), battery icon, and a panel with charge, health and power. Optional
+  open at login and menu-bar-only mode (no Dock icon).
+- Notifications: low charge, low time remaining and fully charged, each once per
+  discharge and at most every 15 minutes (needs the app bundle).
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
 - Works on both Apple Silicon and Intel register layouts.
