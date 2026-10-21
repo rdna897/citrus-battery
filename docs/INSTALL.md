@@ -1,9 +1,18 @@
 # Install Citrus Battery
 
-Releases are distributed on GitHub. Choose the ZIP for your Mac: `arm64` for
-Apple Silicon (M1 or later), or `x86_64` for Intel. The minimum macOS version is
-part of the filename; check it before downloading. Homebrew is not needed to run
-the app.
+Open the [latest GitHub release](https://github.com/rdna897/citrus-battery/releases/latest)
+and use the **Download the application** links. You only need one application ZIP:
+
+- **Apple Silicon (M1 or later):** the ZIP containing `arm64`.
+- **Intel:** the ZIP containing `x86_64`.
+
+To check, open **Apple menu → About This Mac** and look for an Apple chip or an
+Intel processor. The minimum macOS version is part of the filename; check it
+before downloading.
+
+Choose the ZIP without `-sources` in its name. The `-sources.zip` files and
+GitHub's **Source code** archives contain source code, not the application.
+The `.sha256` files are optional checksums. Homebrew is not needed to run the app.
 
 1. Extract the ZIP and drag **Citrus Battery.app** into **Applications**.
 2. Open the app. macOS may block it because Apple cannot verify the developer.
