@@ -8,6 +8,7 @@ enum PreferenceKey {
     static let capacityUnit = "capacityUnit"
     static let capacityStyle = "capacityStyle"
     static let updateInterval = "updateInterval"
+    static let autosaveNewDevices = "autosaveNewDevices"
 }
 
 extension UserDefaults {

@@ -8,6 +8,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             BatterySettings()
                 .tabItem { Label("Battery", systemImage: "battery.100percent") }
+            HistorySettings()
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
         }
         .frame(width: 460)
         .padding(20)
@@ -53,6 +55,23 @@ private struct BatterySettings: View {
                 ForEach(UpdateInterval.allCases) { Text($0.name).tag($0) }
             }
             Text("Delayed refreshes every 5 seconds and averages power over 30 seconds.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct HistorySettings: View {
+    @EnvironmentObject private var history: HistoryController
+    @AppStorage(PreferenceKey.autosaveNewDevices) private var autosaveNewDevices = true
+
+    var body: some View {
+        Form {
+            Toggle("Enable SmartSave for new devices", isOn: $autosaveNewDevices)
+                .onChange(of: autosaveNewDevices) { _ in history.reload() }
+            Text("SmartSave records a device's battery data about once an hour, skipping readings that "
+                + "haven't changed since earlier the same day. You can turn it off per device in the "
+                + "History window.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

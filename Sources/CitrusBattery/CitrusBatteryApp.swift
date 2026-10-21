@@ -18,12 +18,20 @@ enum Entry {
 }
 
 struct CitrusBatteryApp: App {
-    @StateObject private var monitor = BatteryMonitor()
+    @StateObject private var monitor: BatteryMonitor
+    @StateObject private var history: HistoryController
+
+    init() {
+        let monitor = BatteryMonitor()
+        _monitor = StateObject(wrappedValue: monitor)
+        _history = StateObject(wrappedValue: HistoryController(monitor: monitor))
+    }
 
     var body: some Scene {
         WindowGroup("Citrus Battery") {
             ContentView()
                 .environmentObject(monitor)
+                .environmentObject(history)
                 .frame(minWidth: 760, minHeight: 520)
         }
         .commands {
@@ -35,6 +43,7 @@ struct CitrusBatteryApp: App {
 
         Settings {
             SettingsView()
+                .environmentObject(history)
         }
     }
 }

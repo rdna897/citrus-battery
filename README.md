@@ -5,7 +5,7 @@
 An open-source battery monitor for macOS, aiming to cover everything coconutBattery
 does, including the features it sells as "Plus". Nothing is paywalled.
 
-> **Status:** early. The Mac battery view works; iPhone/iPad support, history, the
+> **Status:** early. The Mac battery view and history work; iPhone/iPad support, the
 > menu bar app and the rest are planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
 > for the full feature list and build order.
 
@@ -17,6 +17,11 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   decoded permanent-failure flags.
 - Power readings from the SMC: system usage, 1-minute maximum, adapter input,
   charging/discharging watts, CPU temperature, and a live power chart.
+- Charge limits: macOS Charge Limit and Optimized Battery Charging, plus running
+  third-party limiters, with advice where a limit can skew reported capacity.
+- History: SmartSave records the battery about once an hour when it changes (per-device
+  switch), History window with a health chart, sortable table, copy, delete, and JSON
+  backup export/import. Stored in `~/Library/Application Support/Citrus Battery/`.
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
 - Works on both Apple Silicon and Intel register layouts.

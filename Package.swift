@@ -14,7 +14,7 @@ let package = Package(
         .target(
             name: "CitrusKit",
             dependencies: ["CSMC", "CPowerUI"],
-            linkerSettings: [.linkedFramework("IOKit")]
+            linkerSettings: [.linkedFramework("IOKit"), .linkedLibrary("sqlite3")]
         ),
         .executableTarget(name: "CitrusBattery", dependencies: ["CitrusKit"]),
         .testTarget(name: "CitrusKitTests", dependencies: ["CitrusKit"]),

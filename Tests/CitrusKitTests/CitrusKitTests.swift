@@ -232,3 +232,79 @@ struct FakeSMC: SMCReading {
         #expect(snapshot.cyclesSinceCalibration == 6)
     }
 }
+
+@Suite struct HistoryTests {
+    static func entry(_ day: Int, hour: Int = 12, cycles: Int = 46, fcc: Int = 4500,
+                      serial: String = "MAC1") -> HistoryEntry {
+        let date = ManufactureDateTests.utc.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour))!
+        return HistoryEntry(date: date, deviceType: .mac, deviceSerial: serial, deviceName: "MacBook Air",
+                            deviceModel: "Mac16,12", osVersion: "27.0", batterySerial: "F8Y",
+                            cycleCount: cycles, designCapacity: 4629, fullChargeCapacity: fcc)
+    }
+
+    @Test func roundTripAndOrdering() throws {
+        let store = try HistoryStore(url: nil)
+        try store.insert(Self.entry(19))
+        try store.insert(Self.entry(20, cycles: 47))
+        let entries = try store.entries(deviceSerial: "MAC1")
+        #expect(entries.count == 2)
+        #expect(entries.first?.cycleCount == 47) // newest first
+        #expect(entries.first?.batterySerial == "F8Y")
+        #expect(abs((entries.first?.healthFraction ?? 0) - 4500.0 / 4629) < 0.0001)
+    }
+
+    @Test func devicesAndSmartSave() throws {
+        let store = try HistoryStore(url: nil)
+        try store.insert(Self.entry(19))
+        try store.insert(Self.entry(20))
+        try store.insert(Self.entry(18, serial: "PHONE"))
+        var devices = try store.devices(defaultSmartSave: true)
+        #expect(devices.map(\.serial) == ["MAC1", "PHONE"])
+        #expect(devices.first?.entryCount == 2)
+        let allSmartSave = devices.allSatisfy(\.smartSave)
+        #expect(allSmartSave)
+
+        try #expect(store.smartSave(deviceSerial: "MAC1") == nil)
+        try store.setSmartSave(false, deviceSerial: "MAC1")
+        try #expect(store.smartSave(deviceSerial: "MAC1") == false)
+        devices = try store.devices(defaultSmartSave: true)
+        #expect(devices.first?.smartSave == false)
+    }
+
+    @Test func deleteEntriesAndDevice() throws {
+        let store = try HistoryStore(url: nil)
+        let first = try store.insert(Self.entry(19))
+        try store.insert(Self.entry(20))
+        try store.delete(ids: [first])
+        try #expect(store.entries().count == 1)
+        try store.deleteAll(deviceSerial: "MAC1")
+        try #expect(store.entries().isEmpty)
+    }
+
+    @Test func backupRoundTripSkipsDuplicates() throws {
+        let source = try HistoryStore(url: nil)
+        try source.insert(Self.entry(19))
+        try source.insert(Self.entry(20, cycles: 47))
+        let backup = try source.exportBackup()
+
+        let target = try HistoryStore(url: nil)
+        try target.insert(Self.entry(19))
+        try #expect(target.importBackup(backup) == 1)
+        try #expect(target.entries().count == 2)
+        try #expect(target.importBackup(backup) == 0)
+        #expect(throws: HistoryError.self) { try target.importBackup(Data("{}".utf8)) }
+    }
+
+    @Test func smartSaveDuplicateRule() {
+        let calendar = ManufactureDateTests.utc
+        let saved = [Self.entry(19, hour: 9)]
+        // Same day, same cycles, capacity within 5% → duplicate.
+        #expect(SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4700), of: saved, calendar: calendar))
+        // Capacity moved more than 5%.
+        #expect(!SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4200), of: saved, calendar: calendar))
+        // New cycle.
+        #expect(!SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, cycles: 47), of: saved, calendar: calendar))
+        // Next day.
+        #expect(!SmartSavePolicy.isDuplicate(Self.entry(20, hour: 9), of: saved, calendar: calendar))
+    }
+}

@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarItem: Hashable {
     case thisMac
+    case history
 }
 
 struct ContentView: View {
@@ -24,12 +25,18 @@ struct ContentView: View {
                     }
                     .tag(SidebarItem.thisMac)
                 }
+                Section("Data") {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                        .tag(SidebarItem.history)
+                }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
             switch selection {
             case .thisMac, nil:
                 MacDetailView()
+            case .history:
+                HistoryView()
             }
         }
     }
