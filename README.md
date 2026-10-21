@@ -2,54 +2,94 @@
 
 # Citrus Battery
 
-An open-source battery monitor for macOS, aiming to cover everything coconutBattery
-does, including the features it sells as "Plus". Nothing is paywalled.
+Citrus Battery shows how your Mac's battery is really doing, and your iPhone's and
+iPad's too. You get live charge, health, charge cycles, temperature and power draw.
+It keeps a history of how capacity changes over time, and records everything the
+battery's gauge has logged over its life. It's free, open source, and every feature
+is included.
 
-> **Status:** early. The Mac and iPhone/iPad battery views, history, menu bar,
-> notifications and Advanced Viewer work; smaller items are still planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
-> for the full feature list and build order.
+> **Status:** early development. There are no published builds yet; build it from
+> source (see below).
 
-## What works today
+## Features
 
-- Live Mac battery readings: charge, health (full-charge ÷ design capacity), cycle
-  count, temperature, voltage, amperage, time remaining, adapter details, cell
-  manufacturer, manufacture date (recorded, decoded from a 17-character battery serial,
-  or estimated from operating time), and decoded permanent-failure flags.
-- Power readings from the SMC: system usage, 1-minute maximum, adapter input,
-  charging/discharging watts, CPU temperature, and a live power chart.
-- Charge limits: macOS Charge Limit and Optimized Battery Charging, plus running
-  third-party limiters, with advice where a limit can skew reported capacity.
-- History: SmartSave records the battery about once an hour when it changes (per-device
-  switch), History window with a health chart, sortable table, copy, delete, JSON
-  backup export/import, and import of coconutBattery backups (`.ccba`, needs
-  coconutBattery installed because the file is encrypted with a key built into it). Stored in `~/Library/Application Support/Citrus Battery/`.
-- Menu bar: customisable status text using coconutBattery's placeholders (`%CHARGE%`,
-  `%CC%`, `%CUSTEMP%`, `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`,
-  `%CHARGER%`), battery icon, and a panel with charge, health and power. Optional
-  open at login and menu-bar-only mode (no Dock icon).
-- Notifications: low charge, low time remaining and fully charged, each once per
-  discharge and at most every 15 minutes (needs the app bundle).
-- Advanced Viewer (per device, "Advanced…" in the toolbar): every value the battery and
-  device report as a searchable tree, NVMe SSD health (life used, data read/written,
-  power-on hours, errors) plus since-boot statistics, displays and USB devices, with
-  copy as tab-separated text. `CitrusBattery --advanced` prints the same.
-- Full Mac model names ("MacBook Air (13-inch, M4, 2025)") and, for Intel Macs, the
-  manufacture date from the serial number.
-- A low-health notice below 80% with a replacement search (iFixit), Help → Find
-  Replacement Battery and Copy Diagnostic Report, View → History (⌘Y) and Advanced
-  Viewer (⌥⌘I), and `citrusbattery://mac|history|device/<udid>|advanced[/<udid>]|lifetime[/<udid>]` links.
-- Battery Lifetime Data window (View menu, ⌥⌘L, or "Lifetime Details…" on a device page):
-  operating time, age, temperature and pack-voltage extremes, peak charge and discharge
-  current (also as a C-rate), temperature samples, last gauge calibration and failures,
-  for the Mac and each iPhone/iPad, with copy.
-- Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
-  delayed (smoothed) or fast (1 s) refresh.
-- iPhone and iPad: devices connected by USB, or over Wi-Fi when "Show this iPhone when
-  on Wi-Fi" is on in Finder, appear in the sidebar and menu bar panel with charge,
-  health, cycles, temperature, lifetime data and product icons. SmartSave records them
-  in History, and an optional notification fires when a device charges to a chosen
-  level. `CitrusBattery --ios` prints the same data.
-- Works on both Apple Silicon and Intel register layouts.
+**Your Mac's battery**
+- Charge, health (full-charge capacity ÷ design capacity), charge cycles, temperature,
+  voltage, current, time remaining and charger details.
+- Battery manufacturer and manufacture date. The date comes from what the battery
+  records or from its serial number, or is estimated from its operating hours.
+- Power use from the SMC: system usage, its 1-minute peak, adapter input, battery
+  charge or discharge rate, CPU temperature, and a live power chart.
+- Charge limits: shows macOS's Charge Limit and Optimized Battery Charging, and spots
+  third-party charge limiters (AlDente, Battery Toolkit, batt). Where a limit can make
+  reported capacity read low, it says so.
+- Permanent battery failure flags, decoded.
+- A notice when health falls below 80%, with a link to search for a replacement.
+
+**iPhone and iPad**
+- Devices connected by USB or on the same Wi-Fi network appear in the sidebar and menu
+  bar, with charge, health, cycles, temperature, charger and lifetime data.
+- Shows when iOS has paused charging because of Charge Limit or Optimized Battery
+  Charging.
+
+**History**
+- SmartSave records each battery about once an hour when something changes.
+- A health chart, a sortable table, JSON backup and restore, and import of
+  coconutBattery backups (`.ccba`, which needs coconutBattery installed).
+
+**Battery Lifetime Data**
+- Total operating time, age, temperature and pack-voltage extremes, peak charge and
+  discharge current (also as a C-rate), the number of temperature samples, the last
+  gauge calibration and any battery failures. Available for the Mac and each device.
+
+**Advanced Viewer**
+- Every value the battery and device report, as a searchable tree. Also NVMe SSD
+  health (life used, data read and written, power-on hours, errors), displays and
+  USB devices. Everything can be copied as tab-separated text.
+
+**Menu bar and notifications**
+- Status text you can customise with placeholders (`%CHARGE%`, `%CC%`, `%CUSTEMP%`,
+  `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`, `%CHARGER%`), plus a
+  panel showing your Mac and devices. Can open at login, with an optional
+  menu-bar-only mode.
+- Notifications for low charge, low time remaining, fully charged, and an iPhone/iPad
+  reaching a chosen level.
+
+**Settings**
+- 8 temperature units, mAh or Wh, raw or macOS-style percentages, and a smoothed or
+  fast (1-second) refresh.
+- `citrusbattery://` links (`mac`, `history`, `device/<udid>`, `advanced[/<udid>]`,
+  `lifetime[/<udid>]`) and command-line output (`--dump`, `--ios`, `--advanced`).
+
+Works on Apple Silicon and Intel Macs.
+
+## Comparison
+
+How Citrus Battery compares with coconutBattery 4.4, free and Plus:
+
+| Feature | Citrus Battery | coconutBattery | coconutBattery Plus |
+|---|:-:|:-:|:-:|
+| Price | Free | Free | Paid |
+| Source code | Open (GPL v3) | Closed | Closed |
+| Mac battery: charge, health, cycles, temperature | ✓ | ✓ | ✓ |
+| Battery manufacturer and manufacture date | ✓ | ✓ | ✓ |
+| Live power use | ✓ | ✓ | ✓ |
+| Charge limit detection and advice | ✓ | — | — |
+| iPhone/iPad over USB | ✓ | ✓ | ✓ |
+| iPhone/iPad over Wi-Fi | ✓ | — | ✓ |
+| Apple Watch | — | ✓ | ✓ |
+| History with SmartSave, backups | ✓ | ✓ | ✓ |
+| Menu bar status | ✓ | ✓ | ✓ |
+| Custom menu bar text | ✓ | — | ✓ |
+| Notifications | ✓ | — | ✓ |
+| Battery Lifetime Data | ✓ | — | ✓ |
+| Advanced Viewer (SSD health, displays, USB) | ✓ | — | ✓ |
+| Wh units and fast refresh | ✓ | — | ✓ |
+| All 8 temperature units | ✓ | 2 | ✓ |
+| Compact "Classic" layout | — | ✓ | ✓ |
+| Printable information sheet | — | ✓ | ✓ (custom templates) |
+| Online comparison with other devices | — | ✓ | ✓ |
+| Automatic updates | Planned | ✓ | ✓ |
 
 ## Building
 
@@ -93,8 +133,10 @@ swift test -Xswiftc -plugin-path \
 
 | Path | Contents |
 |---|---|
-| `Sources/CSMC` | C shim for the AppleSMC user client |
-| `Sources/CitrusKit` | Data layer: SMC, battery registry, power source, units, failure flags |
+| `Sources/CSMC` | C shims for the AppleSMC user client and NVMe SMART |
+| `Sources/CPowerUI` | Read-only charge limit status from macOS |
+| `Sources/CIDevice` | iPhone/iPad access through libimobiledevice |
+| `Sources/CitrusKit` | Data layer: battery, power, devices, history, units |
 | `Sources/CitrusBattery` | SwiftUI app |
 | `Tests/CitrusKitTests` | Unit tests, including fixtures from real Apple Silicon and Intel layouts |
 | `docs/FEATURE_SPEC.md` | Feature inventory and implementation notes |
@@ -103,5 +145,3 @@ swift test -Xswiftc -plugin-path \
 
 Citrus Battery is free software, licensed under the
 [GNU General Public License v3.0](LICENSE).
-
-Created in [T3 Code](https://t3.codes).
