@@ -11,9 +11,19 @@ let package = Package(
     targets: [
         .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit")]),
         .target(name: "CPowerUI", linkerSettings: [.linkedFramework("Foundation")]),
+        // libimobiledevice from Homebrew (Apple silicon and Intel prefixes).
+        .target(
+            name: "CIDevice",
+            cSettings: [.unsafeFlags(["-I/opt/homebrew/include", "-I/usr/local/include"])],
+            linkerSettings: [
+                .unsafeFlags(["-L/opt/homebrew/lib", "-L/usr/local/lib"]),
+                .linkedLibrary("imobiledevice-1.0"),
+                .linkedLibrary("plist-2.0"),
+            ]
+        ),
         .target(
             name: "CitrusKit",
-            dependencies: ["CSMC", "CPowerUI"],
+            dependencies: ["CSMC", "CPowerUI", "CIDevice"],
             linkerSettings: [.linkedFramework("IOKit"), .linkedLibrary("sqlite3")]
         ),
         .executableTarget(name: "CitrusBattery", dependencies: ["CitrusKit"]),

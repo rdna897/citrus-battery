@@ -475,3 +475,42 @@ struct FakeSMC: SMCReading {
         #expect(DurationFormat.hoursMinutes(165) == "2:45")
     }
 }
+
+@Suite struct IOSDeviceTests {
+    /// Shaped like the lockdown, diagnostics IORegistry and MobileGestalt replies.
+    @Test func parsesDeviceAndBattery() {
+        let info: [String: Any] = [
+            "DeviceName": "Test iPhone", "ProductType": "iPhone16,1", "ProductVersion": "26.1",
+            "SerialNumber": "ABC123", "ModelNumber": "MTUV3", "RegionInfo": "B/A",
+        ]
+        let battery: [String: Any] = ["IORegistry": [
+            "AppleRawCurrentCapacity": 2100, "AppleRawMaxCapacity": 3000, "DesignCapacity": 3274,
+            "CurrentCapacity": 70, "MaxCapacity": 100, "CycleCount": 412, "Temperature": 2950,
+            "Voltage": 3900, "InstantAmperage": -300, "IsCharging": false, "ExternalConnected": false,
+            "Serial": "F8Y000", "BatteryData": ["LifetimeData": ["TotalOperatingTime": 9000]],
+        ] as [String: Any]]
+        let device = IOSDeviceSnapshot(udid: "UDID", connection: .usb, info: info, battery: battery,
+                                       gestalt: ["MobileGestalt": ["MarketingName": "iPhone 15 Pro"]])
+        #expect(device.name == "Test iPhone")
+        #expect(device.marketingName == "iPhone 15 Pro")
+        #expect(device.deviceClass == "iPhone")
+        #expect(device.modelNumber == "MTUV3B/A")
+        #expect(device.battery?.cycleCount == 412)
+        #expect(device.battery?.fullChargeCapacity == 3000)
+        #expect(abs((device.battery?.healthFraction ?? 0) - 3000.0 / 3274) < 0.0001)
+        #expect(device.battery?.temperatureCelsius == 29.5)
+        #expect(device.battery?.manufacturer == "Sunwoda")
+        #expect(device.battery?.lifetime?.totalOperatingHours == 9000)
+    }
+
+    @Test func fallsBackToModelTableAndIdentifier() {
+        let known = IOSDeviceSnapshot(udid: "A", connection: .wifi, info: ["ProductType": "iPhone17,1"],
+                                      battery: nil, gestalt: nil)
+        #expect(known.marketingName == "iPhone 16 Pro")
+        #expect(known.battery == nil)
+        let unknown = IOSDeviceSnapshot(udid: "B", connection: .usb, info: ["ProductType": "iPad99,9"],
+                                        battery: nil, gestalt: nil)
+        #expect(unknown.marketingName == "iPad99,9")
+        #expect(unknown.deviceClass == "iPad")
+    }
+}

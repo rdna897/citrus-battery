@@ -28,7 +28,7 @@ struct MacDetailContent: View {
                     failuresSection(battery.failures)
                 }
                 if let lifetime = battery.lifetime {
-                    lifetimeSection(lifetime)
+                    LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration)
                 }
                 detailsSection(battery)
             } else {
@@ -159,34 +159,6 @@ struct MacDetailContent: View {
         }
     }
 
-    private func lifetimeSection(_ lifetime: BatteryLifetime) -> some View {
-        Card(title: "Lifetime", systemImage: "heart.text.square.fill") {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                InfoRow("Operating time", lifetime.totalOperatingHours.map {
-                    "\($0.formatted()) h (\($0 / 24) days)"
-                })
-                InfoRow("Temperature range", range(lifetime.minimumTemperatureCelsius,
-                                                   lifetime.maximumTemperatureCelsius,
-                                                   temperatureUnit.format(celsius:)))
-                InfoRow("Average temperature", lifetime.averageTemperatureCelsius.map(temperatureUnit.format(celsius:)))
-                InfoRow("Pack voltage range", range(lifetime.minimumPackVoltageMillivolts.map(Double.init),
-                                                    lifetime.maximumPackVoltageMillivolts.map(Double.init)) {
-                    String(format: "%.2f V", $0 / 1000)
-                })
-                InfoRow("Max charge current", lifetime.maximumChargeCurrentMilliamps.map { "\($0) mA" })
-                InfoRow("Max discharge current", lifetime.maximumDischargeCurrentMilliamps.map { "\(abs($0)) mA" })
-                InfoRow("Gauge last calibrated", monitor.battery?.cyclesSinceCalibration.map {
-                    $0 == 0 ? "This cycle" : "\($0) cycle\($0 == 1 ? "" : "s") ago"
-                }, hidesWhenEmpty: true)
-            }
-        }
-    }
-
-    private func range(_ low: Double?, _ high: Double?, _ format: (Double) -> String) -> String? {
-        guard let low, let high else { return nil }
-        return "\(format(low)) – \(format(high))"
-    }
-
     private var noBattery: some View {
         Card(title: "Battery", systemImage: "battery.0percent") {
             Text("No battery found. This Mac runs on mains power only.")
@@ -272,6 +244,41 @@ struct MacDetailContent: View {
 }
 
 // MARK: - Building blocks
+
+/// Gas-gauge lifetime statistics; shared by the Mac and iPhone/iPad pages.
+struct LifetimeCard: View {
+    let lifetime: BatteryLifetime
+    let cyclesSinceCalibration: Int?
+    @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
+
+    var body: some View {
+        Card(title: "Lifetime", systemImage: "heart.text.square.fill") {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                InfoRow("Operating time", lifetime.totalOperatingHours.map {
+                    "\($0.formatted()) h (\($0 / 24) days)"
+                })
+                InfoRow("Temperature range", range(lifetime.minimumTemperatureCelsius,
+                                                   lifetime.maximumTemperatureCelsius,
+                                                   temperatureUnit.format(celsius:)))
+                InfoRow("Average temperature", lifetime.averageTemperatureCelsius.map(temperatureUnit.format(celsius:)))
+                InfoRow("Pack voltage range", range(lifetime.minimumPackVoltageMillivolts.map(Double.init),
+                                                    lifetime.maximumPackVoltageMillivolts.map(Double.init)) {
+                    String(format: "%.2f V", $0 / 1000)
+                })
+                InfoRow("Max charge current", lifetime.maximumChargeCurrentMilliamps.map { "\($0) mA" })
+                InfoRow("Max discharge current", lifetime.maximumDischargeCurrentMilliamps.map { "\(abs($0)) mA" })
+                InfoRow("Gauge last calibrated", cyclesSinceCalibration.map {
+                    $0 == 0 ? "This cycle" : "\($0) cycle\($0 == 1 ? "" : "s") ago"
+                }, hidesWhenEmpty: true)
+            }
+        }
+    }
+
+    private func range(_ low: Double?, _ high: Double?, _ format: (Double) -> String) -> String? {
+        guard let low, let high else { return nil }
+        return "\(format(low)) – \(format(high))"
+    }
+}
 
 struct Card<Content: View>: View {
     let title: String

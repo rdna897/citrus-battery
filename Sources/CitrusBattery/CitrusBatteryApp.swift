@@ -9,6 +9,10 @@ enum Entry {
             DiagnosticDump.print()
             return
         }
+        if arguments.contains("--ios") {
+            dumpIOSDevices()
+            return
+        }
         if let index = arguments.firstIndex(of: "--import-coconutbattery"), index + 1 < arguments.count {
             importCoconutBattery(path: arguments[index + 1])
             return
@@ -19,6 +23,36 @@ enum Entry {
             return
         }
         CitrusBatteryApp.main()
+    }
+}
+
+/// `CitrusBattery --ios` lists connected iPhones/iPads and their battery data.
+private func dumpIOSDevices() {
+    let devices = IOSDeviceReader.connectedDevices()
+    if devices.isEmpty {
+        print("No iPhone or iPad found. Connect one with a cable, unlock it, and tap Trust.")
+    }
+    for listing in devices {
+        print("\(listing.udid) (\(listing.connection.rawValue))")
+        switch IOSDeviceReader.read(listing) {
+        case .notTrusted: print("  Not trusted yet: unlock the device and tap Trust.")
+        case .locked: print("  Locked: unlock the device.")
+        case .unavailable: print("  Couldn't read this device.")
+        case let .ready(device):
+            print("  \(device.name): \(device.marketingName) [\(device.productType)] iOS \(device.osVersion ?? "-")")
+            print("  serial \(device.serialNumber ?? "-")  model \(device.modelNumber ?? "-")")
+            guard let b = device.battery else {
+                print("  No battery data returned.")
+                continue
+            }
+            print("  charge \(b.rawChargeFraction.map { String(format: "%.1f%%", $0 * 100) } ?? "-")"
+                + "  health \(b.healthFraction.map { String(format: "%.1f%%", $0 * 100) } ?? "-")"
+                + "  (\(b.fullChargeCapacity.map(String.init) ?? "-") / \(b.designCapacity.map(String.init) ?? "-") mAh)"
+                + "  cycles \(b.cycleCount.map(String.init) ?? "-")"
+                + "  temp \(b.temperatureCelsius.map { String(format: "%.1f °C", $0) } ?? "-")")
+            print("  charging \(b.isCharging)  external \(b.isExternalPowerConnected)  serial \(b.serialNumber ?? "-")"
+                + "  maker \(b.manufacturer ?? "-")  lifetime \(b.lifetime?.totalOperatingHours.map { "\($0) h" } ?? "-")")
+        }
     }
 }
 
@@ -40,6 +74,7 @@ struct CitrusBatteryApp: App {
     @StateObject private var history: HistoryController
     @StateObject private var notifier: Notifier
     @StateObject private var navigator = Navigator()
+    @StateObject private var iosDevices = IOSDeviceMonitor()
     @AppStorage(PreferenceKey.showInMenuBar) private var showInMenuBar = true
 
     init() {
@@ -57,12 +92,15 @@ struct CitrusBatteryApp: App {
                 .environmentObject(monitor)
                 .environmentObject(history)
                 .environmentObject(navigator)
+                .environmentObject(iosDevices)
                 .frame(minWidth: 760, minHeight: 520)
         }
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("Refresh") { monitor.refresh() }
                     .keyboardShortcut("r")
+                Button("Refresh iPhone/iPad") { iosDevices.refresh() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
 

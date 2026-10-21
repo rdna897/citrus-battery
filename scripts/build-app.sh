@@ -15,6 +15,32 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/CitrusBattery"
 
+# Bundle non-system libraries (libimobiledevice and its dependencies from Homebrew)
+# into Contents/Frameworks and point every reference at the bundled copy, so the
+# app runs on Macs without Homebrew.
+FRAMEWORKS="$APP/Contents/Frameworks"
+mkdir -p "$FRAMEWORKS"
+is_external() { [[ "$1" == /opt/homebrew/* || "$1" == /usr/local/* ]]; }
+bundle_dependencies() {
+    local file="$1"
+    otool -L "$file" | tail -n +2 | awk '{print $1}' | while read -r dep; do
+        is_external "$dep" || continue
+        local name
+        name="$(basename "$dep")"
+        if [ ! -f "$FRAMEWORKS/$name" ]; then
+            cp "$(realpath "$dep")" "$FRAMEWORKS/$name"
+            chmod u+w "$FRAMEWORKS/$name"
+            install_name_tool -id "@executable_path/../Frameworks/$name" "$FRAMEWORKS/$name" 2>/dev/null
+            bundle_dependencies "$FRAMEWORKS/$name"
+        fi
+        install_name_tool -change "$dep" "@executable_path/../Frameworks/$name" "$file" 2>/dev/null
+    done
+}
+bundle_dependencies "$APP/Contents/MacOS/CitrusBattery"
+for lib in "$FRAMEWORKS"/*.dylib; do
+    [ -e "$lib" ] && codesign --force --sign - "$lib" >/dev/null
+done
+
 # App icon from assets/icon.svg (Quick Look rasterises SVG without extra tools).
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

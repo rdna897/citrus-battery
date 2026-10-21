@@ -31,11 +31,22 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   discharge and at most every 15 minutes (needs the app bundle).
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
+- iPhone and iPad (in progress): devices connected by USB, or over WiFi when "Show this
+  iPhone when on Wi-Fi" is on in Finder, appear in the sidebar with charge, health,
+  cycles, temperature and lifetime data. `CitrusBattery --ios` prints the same.
 - Works on both Apple Silicon and Intel register layouts.
 
 ## Building
 
-Requires macOS 13 or later and Swift 6 (Xcode or just the Command Line Tools).
+Requires macOS 13 or later, Swift 6 (Xcode or just the Command Line Tools), and
+libimobiledevice from Homebrew for iPhone/iPad support:
+
+```bash
+brew install libimobiledevice
+```
+
+`scripts/build-app.sh` copies libimobiledevice and its dependencies into the app
+bundle, so the built app runs on Macs without Homebrew.
 
 ```bash
 swift build                      # debug build
