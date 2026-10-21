@@ -230,7 +230,8 @@ private struct DevicePanelRow: View {
     private func stateText(fraction: Double?) -> String {
         switch device.state {
         case .ready, .disconnected:
-            let charging = device.snapshot?.battery?.isCharging == true ? "⚡︎ " : ""
+            let battery = device.snapshot?.battery
+            let charging = battery?.isCharging == true ? "⚡︎ " : battery?.isChargingPausedBySettings == true ? "⏸︎ " : ""
             let percent = fraction.map { "\(charging)\(Int(($0 * 100).rounded()))%" } ?? "–"
             return device.state == .disconnected ? "\(percent) (last seen)" : percent
         case .notTrusted: return "Tap Trust"

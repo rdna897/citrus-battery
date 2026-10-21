@@ -608,3 +608,25 @@ struct FakeSMC: SMCReading {
         #expect(BatteryOrigin.macManufactureDate(serial: "HKHF74H9DD", modelIdentifier: "Mac16,12") == nil)
     }
 }
+
+@Suite struct ChargingPausedTests {
+    static func snapshot(reason: Int, charging: Bool, connected: Bool = true, full: Bool = false) -> MacBatterySnapshot {
+        MacBatterySnapshot(registry: [
+            "ExternalConnected": connected, "IsCharging": charging, "FullyCharged": full,
+            "ChargerData": ["NotChargingReason": reason],
+        ], smc: nil, powerSource: nil)
+    }
+
+    /// Readings from an iPhone 18 Pro Max at 89%, toggling iOS's charge limit.
+    @Test func matchesObservedReadings() {
+        #expect(Self.snapshot(reason: 16_777_216, charging: false).isChargingPausedBySettings)
+        #expect(!Self.snapshot(reason: 0, charging: true).isChargingPausedBySettings)
+    }
+
+    @Test func otherReasonsAndStatesAreNotPaused() {
+        #expect(!Self.snapshot(reason: 128, charging: false, connected: false).isChargingPausedBySettings)
+        #expect(!Self.snapshot(reason: 16_777_216, charging: false, full: true).isChargingPausedBySettings)
+        #expect(!Self.snapshot(reason: 16_777_216, charging: false, connected: false).isChargingPausedBySettings)
+        #expect(!Self.snapshot(reason: 2, charging: false).isChargingPausedBySettings)
+    }
+}

@@ -121,6 +121,13 @@ struct IOSDetailContent: View {
                              .map { $0 + (capacity(battery.designCapacity, battery) ?? "—") },
                          tint: healthColour(battery.healthFraction))
                 Divider()
+                if battery.isChargingPausedBySettings {
+                    AdviceBox(advice: ChargeLimitAdvice(
+                        level: .info,
+                        message: "iOS has paused charging because of its charging settings (Charge Limit or "
+                            + "charging optimization). iOS occasionally charges to 100% to keep its battery "
+                            + "estimates accurate, so this won't skew the reported capacity."))
+                }
                 LowHealthNotice(healthFraction: battery.healthFraction,
                                 model: device.snapshot?.marketingName ?? "iPhone",
                                 batteryKey: battery.serialNumber ?? device.udid)
@@ -166,6 +173,7 @@ struct IOSDetailContent: View {
     private func status(_ battery: MacBatterySnapshot) -> String {
         if battery.isFullyCharged { return "Fully charged" }
         if battery.isCharging { return "Charging" }
+        if battery.isChargingPausedBySettings { return "Charging paused by iOS (charging settings)" }
         return battery.isExternalPowerConnected ? "Connected, not charging" : "On battery"
     }
 

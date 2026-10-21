@@ -49,6 +49,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var isCharging: Bool
     public var isExternalPowerConnected: Bool
     public var isFullyCharged: Bool
+    /// `ChargerData.NotChargingReason` bit field (0 while charging normally).
+    public var notChargingReason: Int?
     public var timeToEmptyMinutes: Int?
     public var timeToFullMinutes: Int?
 
@@ -103,6 +105,19 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var cyclesSinceCalibration: Int? {
         guard let cycleCount, let last = lifetime?.cycleCountAtLastCalibration, last <= cycleCount else { return nil }
         return cycleCount - last
+    }
+
+    /// Set in `NotChargingReason` while iOS holds the charge because of its
+    /// charging settings (Charge Limit / charging optimization). Verified on an
+    /// iPhone: lifting the limit cleared it and charging resumed within seconds;
+    /// restoring the setting set it again, at the same charge level.
+    public static let pausedBySystemChargingSettings = 0x0100_0000
+
+    /// Plugged in, below full, not charging, because the device's own charging
+    /// settings paused it.
+    public var isChargingPausedBySettings: Bool {
+        isExternalPowerConnected && !isCharging && !isFullyCharged
+            && (notChargingReason ?? 0) & Self.pausedBySystemChargingSettings != 0
     }
 
     /// Minutes until empty or full, whichever applies, preferring macOS's estimate.
@@ -166,6 +181,7 @@ extension MacBatterySnapshot {
         isCharging = Self.bool(r["IsCharging"]) ?? false
         isExternalPowerConnected = Self.bool(r["ExternalConnected"]) ?? false
         isFullyCharged = Self.bool(r["FullyCharged"]) ?? false
+        notChargingReason = Self.int((r["ChargerData"] as? [String: Any])?["NotChargingReason"])
         timeToEmptyMinutes = Self.minutes(r["AvgTimeToEmpty"])
         timeToFullMinutes = Self.minutes(r["AvgTimeToFull"])
 

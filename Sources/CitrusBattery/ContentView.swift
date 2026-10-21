@@ -77,8 +77,10 @@ struct ContentView: View {
     private func subtitle(for device: TrackedDevice) -> String {
         switch device.state {
         case .ready:
-            let charge = device.snapshot?.battery?.chargeFraction(style: .apple).map { "\(Int(($0 * 100).rounded()))%" }
-            return [device.snapshot?.marketingName, charge].compactMap { $0 }.joined(separator: " · ")
+            let battery = device.snapshot?.battery
+            let charge = battery?.chargeFraction(style: .apple).map { "\(Int(($0 * 100).rounded()))%" }
+            let paused = battery?.isChargingPausedBySettings == true ? " ⏸︎" : ""
+            return [device.snapshot?.marketingName, charge.map { $0 + paused }].compactMap { $0 }.joined(separator: " · ")
         case .notTrusted: return "Tap Trust on the device"
         case .locked: return "Unlock the device"
         case .unavailable: return "Can't read"

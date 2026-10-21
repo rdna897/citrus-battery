@@ -41,6 +41,11 @@ public struct ChargeLimitAdvice: Sendable, Equatable {
     public enum Level: Sendable { case info, caution }
     public var level: Level
     public var message: String
+
+    public init(level: Level, message: String) {
+        self.level = level
+        self.message = message
+    }
 }
 
 extension ChargeLimitStatus {
