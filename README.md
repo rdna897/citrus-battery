@@ -33,7 +33,7 @@ is included.
   Charging.
 
 **History**
-- SmartSave records each battery about once an hour when something changes.
+- Auto-Record saves each battery about once an hour when something changes.
 - A health chart, a sortable table, JSON backup and restore, and import of
   coconutBattery backups (`.ccba`, which needs coconutBattery installed).
 
@@ -77,7 +77,7 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 | Charge limit detection and advice | ✓ | — | — |
 | iPhone/iPad over USB | ✓ | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | — | ✓ |
-| History with SmartSave, backups | ✓ | ✓ | ✓ |
+| History with automatic recording, backups | ✓ | ✓ | ✓ |
 | Menu bar status | ✓ | ✓ | ✓ |
 | Custom menu bar text | ✓ | — | ✓ |
 | Notifications | ✓ | — | ✓ |

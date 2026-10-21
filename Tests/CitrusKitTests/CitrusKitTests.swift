@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import SQLite3
 import Testing
 @testable import CitrusKit
 
@@ -316,22 +317,35 @@ struct FakeSMC: SMCReading {
         #expect(abs((entries.first?.healthFraction ?? 0) - 4500.0 / 4629) < 0.0001)
     }
 
-    @Test func devicesAndSmartSave() throws {
+    @Test func renamesLegacyDeviceColumn() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("legacy-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        sqlite3_open(url.path, &db)
+        sqlite3_exec(db, "CREATE TABLE devices (serial TEXT PRIMARY KEY, smart_save INTEGER NOT NULL);"
+            + "INSERT INTO devices VALUES ('MAC1', 0);", nil, nil, nil)
+        sqlite3_close(db)
+
+        let store = try HistoryStore(url: url)
+        try #expect(store.autoRecord(deviceSerial: "MAC1") == false)
+    }
+
+    @Test func devicesAndAutoRecord() throws {
         let store = try HistoryStore(url: nil)
         try store.insert(Self.entry(19))
         try store.insert(Self.entry(20))
         try store.insert(Self.entry(18, serial: "PHONE"))
-        var devices = try store.devices(defaultSmartSave: true)
+        var devices = try store.devices(defaultAutoRecord: true)
         #expect(devices.map(\.serial) == ["MAC1", "PHONE"])
         #expect(devices.first?.entryCount == 2)
-        let allSmartSave = devices.allSatisfy(\.smartSave)
-        #expect(allSmartSave)
+        let allAutoRecord = devices.allSatisfy(\.autoRecord)
+        #expect(allAutoRecord)
 
-        try #expect(store.smartSave(deviceSerial: "MAC1") == nil)
-        try store.setSmartSave(false, deviceSerial: "MAC1")
-        try #expect(store.smartSave(deviceSerial: "MAC1") == false)
-        devices = try store.devices(defaultSmartSave: true)
-        #expect(devices.first?.smartSave == false)
+        try #expect(store.autoRecord(deviceSerial: "MAC1") == nil)
+        try store.setAutoRecord(false, deviceSerial: "MAC1")
+        try #expect(store.autoRecord(deviceSerial: "MAC1") == false)
+        devices = try store.devices(defaultAutoRecord: true)
+        #expect(devices.first?.autoRecord == false)
     }
 
     @Test func deleteEntriesAndDevice() throws {
@@ -358,17 +372,17 @@ struct FakeSMC: SMCReading {
         #expect(throws: HistoryError.self) { try target.importBackup(Data("{}".utf8)) }
     }
 
-    @Test func smartSaveDuplicateRule() {
+    @Test func autoRecordDuplicateRule() {
         let calendar = ManufactureDateTests.utc
         let saved = [Self.entry(19, hour: 9)]
         // Same day, same cycles, capacity within 5% → duplicate.
-        #expect(SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4700), of: saved, calendar: calendar))
+        #expect(AutoRecordPolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4700), of: saved, calendar: calendar))
         // Capacity moved more than 5%.
-        #expect(!SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4200), of: saved, calendar: calendar))
+        #expect(!AutoRecordPolicy.isDuplicate(Self.entry(19, hour: 20, fcc: 4200), of: saved, calendar: calendar))
         // New cycle.
-        #expect(!SmartSavePolicy.isDuplicate(Self.entry(19, hour: 20, cycles: 47), of: saved, calendar: calendar))
+        #expect(!AutoRecordPolicy.isDuplicate(Self.entry(19, hour: 20, cycles: 47), of: saved, calendar: calendar))
         // Next day.
-        #expect(!SmartSavePolicy.isDuplicate(Self.entry(20, hour: 9), of: saved, calendar: calendar))
+        #expect(!AutoRecordPolicy.isDuplicate(Self.entry(20, hour: 9), of: saved, calendar: calendar))
     }
 }
 

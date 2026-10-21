@@ -51,7 +51,7 @@ public struct HistoryEntry: Identifiable, Sendable, Equatable, Codable {
     }
 }
 
-/// A device that has history, with its SmartSave setting.
+/// A device that has history, with its Auto-Record setting.
 public struct HistoryDevice: Identifiable, Sendable, Equatable {
     public var serial: String
     public var name: String
@@ -59,7 +59,7 @@ public struct HistoryDevice: Identifiable, Sendable, Equatable {
     public var type: HistoryEntry.DeviceType
     public var entryCount: Int
     public var lastSaved: Date?
-    public var smartSave: Bool
+    public var autoRecord: Bool
 
     public var id: String { serial }
 }
@@ -76,8 +76,8 @@ public enum HistoryError: Error, LocalizedError {
     }
 }
 
-/// When SmartSave should record a new entry.
-public enum SmartSavePolicy {
+/// When Auto-Record should record a new entry.
+public enum AutoRecordPolicy {
     /// Minimum time between automatic save attempts.
     public static let minimumInterval: TimeInterval = 3600
     /// Capacity tolerance for treating a reading as a duplicate.
@@ -149,9 +149,20 @@ public final class HistoryStore: @unchecked Sendable {
             CREATE INDEX IF NOT EXISTS entries_device_date ON entries (device_serial, date);
             CREATE TABLE IF NOT EXISTS devices (
                 serial TEXT PRIMARY KEY,
-                smart_save INTEGER NOT NULL
+                auto_record INTEGER NOT NULL
             );
             """)
+        try renameLegacyColumn()
+    }
+
+    /// Databases from earlier builds named the per-device column `smart_save`.
+    private func renameLegacyColumn() throws {
+        let statement = try prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = 'smart_save'")
+        let hasLegacy = sqlite3_step(statement) == SQLITE_ROW
+        sqlite3_finalize(statement)
+        if hasLegacy {
+            try execute("ALTER TABLE devices RENAME COLUMN smart_save TO auto_record")
+        }
     }
 
     deinit {
@@ -243,10 +254,10 @@ public final class HistoryStore: @unchecked Sendable {
     // MARK: Devices
 
     /// Devices with at least one entry, most recently saved first.
-    public func devices(defaultSmartSave: Bool) throws -> [HistoryDevice] {
+    public func devices(defaultAutoRecord: Bool) throws -> [HistoryDevice] {
         try locked {
             let statement = try prepare("""
-                SELECT e.device_serial, e.device_name, e.device_model, e.device_type, COUNT(*), MAX(e.date), d.smart_save
+                SELECT e.device_serial, e.device_name, e.device_model, e.device_type, COUNT(*), MAX(e.date), d.auto_record
                 FROM entries e LEFT JOIN devices d ON d.serial = e.device_serial
                 GROUP BY e.device_serial ORDER BY MAX(e.date) DESC
                 """)
@@ -260,17 +271,17 @@ public final class HistoryStore: @unchecked Sendable {
                     type: HistoryEntry.DeviceType(rawValue: text(statement, 3) ?? "") ?? .mac,
                     entryCount: Int(sqlite3_column_int64(statement, 4)),
                     lastSaved: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
-                    smartSave: int(statement, 6).map { $0 != 0 } ?? defaultSmartSave
+                    autoRecord: int(statement, 6).map { $0 != 0 } ?? defaultAutoRecord
                 ))
             }
             return result
         }
     }
 
-    /// The device's SmartSave setting, or `nil` if it has never been set.
-    public func smartSave(deviceSerial: String) throws -> Bool? {
+    /// The device's Auto-Record setting, or `nil` if it has never been set.
+    public func autoRecord(deviceSerial: String) throws -> Bool? {
         try locked {
-            let statement = try prepare("SELECT smart_save FROM devices WHERE serial = ?")
+            let statement = try prepare("SELECT auto_record FROM devices WHERE serial = ?")
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, deviceSerial)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
@@ -278,9 +289,9 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
-    public func setSmartSave(_ enabled: Bool, deviceSerial: String) throws {
+    public func setAutoRecord(_ enabled: Bool, deviceSerial: String) throws {
         try locked {
-            let statement = try prepare("INSERT OR REPLACE INTO devices (serial, smart_save) VALUES (?, ?)")
+            let statement = try prepare("INSERT OR REPLACE INTO devices (serial, auto_record) VALUES (?, ?)")
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, deviceSerial)
             bind(statement, 2, enabled ? 1 : 0)

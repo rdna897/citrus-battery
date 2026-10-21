@@ -2,7 +2,7 @@ import CitrusKit
 import Combine
 import Foundation
 
-/// Owns the history database: SmartSave, manual saves, and the viewer's data.
+/// Owns the history database: Auto-Record, manual saves, and the viewer's data.
 @MainActor
 final class HistoryController: ObservableObject {
     @Published private(set) var devices: [HistoryDevice] = []
@@ -16,8 +16,8 @@ final class HistoryController: ObservableObject {
     private weak var monitor: BatteryMonitor?
     private weak var iosDevices: IOSDeviceMonitor?
     private var observers: [AnyCancellable] = []
-    /// Last SmartSave attempt per device serial.
-    private var lastAutosaveAttempt: [String: Date] = [:]
+    /// Last Auto-Record attempt per device serial.
+    private var lastAutoRecordAttempt: [String: Date] = [:]
     private let launchDate = Date()
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
@@ -32,16 +32,16 @@ final class HistoryController: ObservableObject {
         reload()
         observers.append(monitor.$battery
             .compactMap { $0 }
-            .sink { [weak self] battery in self?.considerAutosave(mac: battery) })
+            .sink { [weak self] battery in self?.considerAutoRecord(mac: battery) })
         observers.append(iosDevices.$devices
             .sink { [weak self] devices in
                 for device in devices where device.state == .ready {
-                    self?.considerAutosave(device: device)
+                    self?.considerAutoRecord(device: device)
                 }
             })
     }
 
-    var autosaveNewDevices: Bool {
+    var autoRecordNewDevices: Bool {
         UserDefaults.standard.object(forKey: PreferenceKey.autosaveNewDevices) as? Bool ?? true
     }
 
@@ -53,28 +53,28 @@ final class HistoryController: ObservableObject {
 
     // MARK: Saving
 
-    private func considerAutosave(mac battery: MacBatterySnapshot) {
+    private func considerAutoRecord(mac battery: MacBatterySnapshot) {
         guard let monitor else { return }
         // Give the marketing name a moment to load so the first entry is labelled well.
         if monitor.marketingName == nil, Date().timeIntervalSince(launchDate) < 30 { return }
-        considerAutosave(macEntry(battery))
+        considerAutoRecord(macEntry(battery))
     }
 
-    private func considerAutosave(device: TrackedDevice) {
+    private func considerAutoRecord(device: TrackedDevice) {
         guard let snapshot = device.snapshot, let battery = snapshot.battery else { return }
-        considerAutosave(HistoryEntry(device: snapshot, battery: battery))
+        considerAutoRecord(HistoryEntry(device: snapshot, battery: battery))
     }
 
-    /// SmartSave: at most one attempt an hour per device, skipping same-day duplicates.
-    private func considerAutosave(_ entry: HistoryEntry) {
+    /// Auto-Record: at most one attempt an hour per device, skipping same-day duplicates.
+    private func considerAutoRecord(_ entry: HistoryEntry) {
         guard let store else { return }
         let serial = entry.deviceSerial
-        if let last = lastAutosaveAttempt[serial], Date().timeIntervalSince(last) < SmartSavePolicy.minimumInterval {
+        if let last = lastAutoRecordAttempt[serial], Date().timeIntervalSince(last) < AutoRecordPolicy.minimumInterval {
             return
         }
-        lastAutosaveAttempt[serial] = Date()
+        lastAutoRecordAttempt[serial] = Date()
 
-        let enabled = (try? store.smartSave(deviceSerial: serial)) ?? nil ?? autosaveNewDevices
+        let enabled = (try? store.autoRecord(deviceSerial: serial)) ?? nil ?? autoRecordNewDevices
         guard enabled else { return }
         save(entry, skippingDuplicates: true)
     }
@@ -102,7 +102,7 @@ final class HistoryController: ObservableObject {
         guard let store else { return }
         perform {
             if skippingDuplicates,
-               SmartSavePolicy.isDuplicate(entry, of: try store.entries(deviceSerial: entry.deviceSerial)) {
+               AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: entry.deviceSerial)) {
                 return
             }
             try store.insert(entry)
@@ -125,14 +125,14 @@ final class HistoryController: ObservableObject {
         reload()
     }
 
-    func setSmartSave(_ enabled: Bool, for serial: String) {
-        perform { try store?.setSmartSave(enabled, deviceSerial: serial) }
+    func setAutoRecord(_ enabled: Bool, for serial: String) {
+        perform { try store?.setAutoRecord(enabled, deviceSerial: serial) }
         reload()
     }
 
-    /// SmartSave state for a device, falling back to the default for new devices.
-    func smartSave(for serial: String) -> Bool {
-        ((try? store?.smartSave(deviceSerial: serial)) ?? nil) ?? autosaveNewDevices
+    /// Auto-Record state for a device, falling back to the default for new devices.
+    func autoRecord(for serial: String) -> Bool {
+        ((try? store?.autoRecord(deviceSerial: serial)) ?? nil) ?? autoRecordNewDevices
     }
 
     // MARK: Backup
@@ -175,7 +175,7 @@ final class HistoryController: ObservableObject {
 
     func reload() {
         guard let store else { return }
-        perform { devices = try store.devices(defaultSmartSave: autosaveNewDevices) }
+        perform { devices = try store.devices(defaultAutoRecord: autoRecordNewDevices) }
         if selectedDeviceSerial == nil || !devices.contains(where: { $0.serial == selectedDeviceSerial }) {
             selectedDeviceSerial = devices.first(where: { $0.serial == thisMacSerial })?.serial ?? devices.first?.serial
         } else {

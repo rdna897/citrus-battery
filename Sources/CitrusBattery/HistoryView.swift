@@ -110,9 +110,9 @@ struct HistoryView: View {
             .frame(maxWidth: 320)
 
             if let device = selectedDevice {
-                Toggle("SmartSave", isOn: Binding(
-                    get: { history.smartSave(for: device.serial) },
-                    set: { history.setSmartSave($0, for: device.serial) }
+                Toggle("Auto-Record", isOn: Binding(
+                    get: { history.autoRecord(for: device.serial) },
+                    set: { history.setAutoRecord($0, for: device.serial) }
                 ))
                 .help("Automatically save this device's battery data, at most once an hour and only when it has changed.")
                 Spacer()
@@ -134,7 +134,7 @@ struct HistoryView: View {
                 .foregroundStyle(.secondary)
             Text("No history yet")
                 .font(.headline)
-            Text("SmartSave records this Mac's battery about once an hour when something has changed. "
+            Text("Auto-Record saves this Mac's battery about once an hour when something has changed. "
                 + "Use Save Now to record a reading immediately.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

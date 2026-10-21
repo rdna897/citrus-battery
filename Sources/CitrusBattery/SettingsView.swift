@@ -61,13 +61,13 @@ private struct BatterySettings: View {
 
 private struct HistorySettings: View {
     @EnvironmentObject private var history: HistoryController
-    @AppStorage(PreferenceKey.autosaveNewDevices) private var autosaveNewDevices = true
+    @AppStorage(PreferenceKey.autosaveNewDevices) private var autoRecordNewDevices = true
 
     var body: some View {
         Form {
-            Toggle("Enable SmartSave for new devices", isOn: $autosaveNewDevices)
-                .onChange(of: autosaveNewDevices) { _ in history.reload() }
-            SettingsNote("SmartSave records a device's battery data about once an hour, skipping readings that "
+            Toggle("Auto-record new devices", isOn: $autoRecordNewDevices)
+                .onChange(of: autoRecordNewDevices) { _ in history.reload() }
+            SettingsNote("Auto-Record saves a device's battery data about once an hour, skipping readings that "
                 + "haven't changed since earlier the same day. You can turn it off per device in the "
                 + "History window.")
         }
