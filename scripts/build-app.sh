@@ -17,6 +17,14 @@ if ! command -v rsvg-convert >/dev/null 2>&1; then
     exit 1
 fi
 
+# Libraries from scripts/build-dependencies.sh target macOS 13; Homebrew's
+# target the macOS version they were built on. Package.swift reads the prefix.
+export CITRUS_DEPS_PREFIX="${CITRUS_DEPS_PREFIX:-$PWD/.build/deps}"
+DEPS="$CITRUS_DEPS_PREFIX"
+if [ ! -f "$DEPS/lib/libimobiledevice-1.0.dylib" ]; then
+    echo "warning: using Homebrew's libimobiledevice; run scripts/build-dependencies.sh for a macOS 13 build" >&2
+fi
+
 swift build -c "$CONFIG" --product CitrusBattery
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/CitrusBattery"
 
@@ -24,7 +32,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/CitrusBattery"
 
-# Bundle non-system libraries (libimobiledevice and its dependencies from Homebrew)
+# Bundle non-system libraries (libimobiledevice and its dependencies)
 # into Contents/Frameworks and point every reference at the bundled copy, so the
 # app runs on Macs without Homebrew.
 FRAMEWORKS="$APP/Contents/Frameworks"
@@ -35,7 +43,7 @@ SPARKLE=".build/artifacts/sparkle/Sparkle"
 # Preserve framework symlinks, helper executables and upstream code signatures.
 ditto "$SPARKLE/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$FRAMEWORKS/Sparkle.framework"
 cp "$SPARKLE/LICENSE" "$LICENSES/Sparkle-LICENSE.txt"
-is_external() { [[ "$1" == /opt/homebrew/* || "$1" == /usr/local/* ]]; }
+is_external() { [[ "$1" == "$DEPS"/* || "$1" == /opt/homebrew/* || "$1" == /usr/local/* ]]; }
 bundle_dependencies() {
     local file="$1"
     otool -L "$file" | tail -n +2 | awk '{print $1}' | while read -r dep; do
@@ -45,24 +53,31 @@ bundle_dependencies() {
         if [ ! -f "$FRAMEWORKS/$name" ]; then
             local original prefix notices
             original="$(realpath "$dep")"
-            prefix="$(dirname "$(dirname "$original")")"
-            notices="$LICENSES/$(basename "$(dirname "$prefix")")-$(basename "$prefix")"
-            mkdir -p "$notices"
-            for notice in "$prefix"/COPYING* "$prefix"/LICENSE* "$prefix"/NOTICE* "$prefix"/AUTHORS* "$prefix"/sbom.spdx.json "$prefix"/INSTALL_RECEIPT.json; do
-                [ ! -f "$notice" ] || cp "$notice" "$notices/"
-            done
-            if [ -d "$prefix/.brew" ]; then
-                cp -R "$prefix/.brew" "$notices/formula"
-            fi
             cp "$original" "$FRAMEWORKS/$name"
             chmod u+w "$FRAMEWORKS/$name"
             install_name_tool -id "@executable_path/../Frameworks/$name" "$FRAMEWORKS/$name" 2>/dev/null
             bundle_dependencies "$FRAMEWORKS/$name"
+            # Our own builds keep their notices in share/citrus-notices (copied below).
+            if [[ "$original" != "$DEPS"/* ]]; then
+                prefix="$(dirname "$(dirname "$original")")"
+                notices="$LICENSES/$(basename "$(dirname "$prefix")")-$(basename "$prefix")"
+                mkdir -p "$notices"
+                for notice in "$prefix"/COPYING* "$prefix"/LICENSE* "$prefix"/NOTICE* "$prefix"/AUTHORS* "$prefix"/sbom.spdx.json "$prefix"/INSTALL_RECEIPT.json; do
+                    [ ! -f "$notice" ] || cp "$notice" "$notices/"
+                done
+                if [ -d "$prefix/.brew" ]; then
+                    cp -R "$prefix/.brew" "$notices/formula"
+                fi
+            fi
         fi
         install_name_tool -change "$dep" "@executable_path/../Frameworks/$name" "$file" 2>/dev/null
     done
 }
 bundle_dependencies "$APP/Contents/MacOS/CitrusBattery"
+# Package.swift links against the prefix whenever this library exists there.
+if [ -f "$DEPS/lib/libimobiledevice-1.0.dylib" ]; then
+    cp -R "$DEPS/share/citrus-notices/" "$LICENSES/"
+fi
 for lib in "$FRAMEWORKS"/*.dylib; do
     [ -e "$lib" ] && codesign --force --sign - "$lib" >/dev/null
 done
@@ -104,8 +119,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CitrusBuildNumber</key><string>${BUILD}</string>
     <key>SUFeedURL</key><string>https://github.com/rdna897/citrus-battery/releases/latest/download/appcast-$(uname -m).xml</string>
     <key>SUPublicEDKey</key><string>$(cat assets/update-public-key.txt)</string>
-    <key>SUEnableAutomaticChecks</key><true/>
-    <key>SUAutomaticallyUpdate</key><true/>
     <key>SUVerifyUpdateBeforeExtraction</key><true/>
     <key>SURequireSignedFeed</key><true/>
     <key>SUEnableSystemProfiling</key><false/>

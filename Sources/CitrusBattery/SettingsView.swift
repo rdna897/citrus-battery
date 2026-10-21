@@ -37,7 +37,7 @@ private struct UpdateSettings: View {
                 get: { updater.automaticallyDownloadsUpdates },
                 set: { enabled in updater.setAutomaticallyDownloadsUpdates(enabled) }))
                 .disabled(!updater.automaticallyChecksForUpdates)
-            SettingsNote("Checks GitHub daily. Automatic updates download in the background and install when Citrus Battery quits. You can also install and relaunch from the update window.")
+            SettingsNote("Checks GitHub daily. With automatic installation on, updates download in the background and install when Citrus Battery quits; otherwise each update is shown first.")
             if let date = updater.lastUpdateCheckDate {
                 LabeledContent("Last checked:") {
                     Text(date, format: .dateTime.month().day().hour().minute())

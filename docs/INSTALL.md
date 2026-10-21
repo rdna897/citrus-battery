@@ -33,8 +33,10 @@ the same folder and run `shasum -a 256 -c <filename>.zip.sha256`, replacing
 `<filename>` with the downloaded archive name. This checks the file against the
 published checksum; it does not authenticate the publisher independently.
 
-From **version 1.1**, Citrus Battery checks GitHub daily for new versions. By
-default, it downloads updates in the background and installs them when you quit.
+From **version 1.1**, Citrus Battery can check GitHub daily for new versions. On
+its second launch, it asks whether to check automatically. If you also allow
+automatic installation, updates download in the background and install when you quit;
+otherwise Citrus Battery shows each update and lets you choose.
 Choose **Citrus Battery → Check for Updates…** (also available in the menu bar
 panel) to check immediately and install with a relaunch. Change automatic checks
 and downloads in **Settings → Updates**. Updates use the build for your Mac's

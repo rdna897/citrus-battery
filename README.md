@@ -34,9 +34,10 @@ the first launch, and you trust the release, try opening the app and then use
 **System Settings → Privacy & Security → Open Anyway**. See the full
 [installation instructions](docs/INSTALL.md) and
 [Apple's first-launch guidance](https://support.apple.com/en-gb/102445).
-From version 1.1, Citrus Battery checks GitHub for updates daily, downloads them
-automatically and installs them when the app quits. Use **Check for Updates…**
-to update and relaunch immediately, or change this behavior in **Settings → Updates**.
+From version 1.1, Citrus Battery can check GitHub for updates. On its second
+launch it asks whether to check automatically, and whether to also download and
+install updates without asking. Use **Check for Updates…** at any time, or change
+these choices in **Settings → Updates**.
 Users of version 1.0.1 or earlier need to install 1.1 manually once.
 
 ## A closer look
@@ -146,21 +147,22 @@ How Citrus Battery compares with coconutBattery 4.4, free and Plus:
 
 ## Building
 
-The source targets macOS 13 or later. Building requires Swift 6 (Xcode or the
-Command Line Tools), Python 3,
-libimobiledevice from Homebrew for iPhone/iPad support, and librsvg to render the
-app icon:
+Citrus Battery runs on macOS 13 or later. Building requires Swift 6 (Xcode or the
+Command Line Tools), Python 3, pkg-config, and librsvg to render the app icon:
 
 ```bash
-brew install libimobiledevice librsvg
+brew install pkgconf librsvg
+./scripts/build-dependencies.sh  # libimobiledevice and its libraries, for macOS 13
 ```
 
-`scripts/build-app.sh` copies libimobiledevice and its dependencies into the app
-bundle and embeds the pinned Sparkle framework, so the built app runs on Macs
-without Homebrew. Sparkle verifies signed update feeds and downloads before
-installing them. The final app's minimum
-macOS version is determined by the executable and bundled libraries; newer
-Homebrew builds can raise it above macOS 13.
+`scripts/build-dependencies.sh` builds libimobiledevice, libplist,
+libimobiledevice-glue, libusbmuxd, libtatsu and OpenSSL from pinned, checksummed
+source releases into `.build/deps`, targeting macOS 13. `scripts/build-app.sh`
+copies them into the app bundle and embeds the pinned Sparkle framework, so the
+built app runs on Macs without Homebrew. Sparkle verifies signed update feeds and
+downloads before installing them. Without `.build/deps`, the build falls back to
+Homebrew's libimobiledevice, which raises the app's minimum macOS to that of the
+machine Homebrew built it for.
 
 ```bash
 swift build                      # debug build

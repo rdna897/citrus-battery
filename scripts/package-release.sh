@@ -8,11 +8,17 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
     echo "error: commit all changes before packaging so the source archive matches the app" >&2
     exit 1
 fi
+./scripts/build-dependencies.sh
 CONFIG=release ./scripts/build-app.sh
 
 APP="dist/Citrus Battery.app"
 ARCH="$(uname -m)"
 MIN_MACOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+# Releases support every macOS the source targets; never let a library raise it.
+if [ "$MIN_MACOS" != "${CITRUS_MIN_MACOS:-13.0}" ]; then
+    echo "error: the app requires macOS $MIN_MACOS, expected ${CITRUS_MIN_MACOS:-13.0}" >&2
+    exit 1
+fi
 NAME="CitrusBattery-${VERSION}-${ARCH}-macOS${MIN_MACOS}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

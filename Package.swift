@@ -1,5 +1,17 @@
 // swift-tools-version: 6.0
+import Foundation
 import PackageDescription
+
+/// libimobiledevice built for macOS 13 by scripts/build-dependencies.sh, when
+/// present; otherwise Homebrew's copy (Apple silicon and Intel prefixes), whose
+/// minimum macOS is that of the machine it was built for.
+let dependencyPrefixes: [String] = {
+    let prefix = Context.environment["CITRUS_DEPS_PREFIX"] ?? "\(Context.packageDirectory)/.build/deps"
+    if FileManager.default.fileExists(atPath: "\(prefix)/lib/libimobiledevice-1.0.dylib") {
+        return [prefix]
+    }
+    return ["/opt/homebrew", "/usr/local"]
+}()
 
 let package = Package(
     name: "CitrusBattery",
@@ -14,12 +26,11 @@ let package = Package(
     targets: [
         .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]),
         .target(name: "CPowerUI", linkerSettings: [.linkedFramework("Foundation")]),
-        // libimobiledevice from Homebrew (Apple silicon and Intel prefixes).
         .target(
             name: "CIDevice",
-            cSettings: [.unsafeFlags(["-I/opt/homebrew/include", "-I/usr/local/include"])],
+            cSettings: [.unsafeFlags(dependencyPrefixes.map { "-I\($0)/include" })],
             linkerSettings: [
-                .unsafeFlags(["-L/opt/homebrew/lib", "-L/usr/local/lib"]),
+                .unsafeFlags(dependencyPrefixes.map { "-L\($0)/lib" }),
                 .linkedLibrary("imobiledevice-1.0"),
                 .linkedLibrary("plist-2.0"),
             ]

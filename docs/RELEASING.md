@@ -36,9 +36,10 @@ swift test
 Packaging requires a clean checkout, builds the app for the host architecture,
 verifies the app signature before and after extraction, runs the extracted app's
 command-line diagnostics, checks that bundled libraries include that
-architecture, and rejects remaining external Homebrew links. The app declares
-the highest minimum macOS version required by its executable and bundled
-libraries. Building on a newer Mac can produce a higher minimum version.
+architecture, and rejects remaining external Homebrew links. It first runs
+`scripts/build-dependencies.sh`, which builds libimobiledevice and its libraries
+from pinned source releases for macOS 13, and stops if the finished app requires
+a newer macOS than 13.0.
 
 Packaging also runs the extracted app through normal GUI startup. It must finish
 reading notification settings and open a visible application window, then exit
@@ -55,7 +56,8 @@ python3 scripts/test-app-launch.py "dist/Citrus Battery.app"
 
 The archives in `dist/` contain the app and installation instructions, matching
 source code and dependency sources, licenses, build metadata, and SHA-256 files.
-Upstream source downloads are checked against the hashes in Homebrew's SBOMs.
+Upstream source downloads are checked against the SHA-256 hashes pinned in
+`scripts/build-dependencies.sh`.
 Packaging stops if the source metadata or a source download cannot be verified.
 The pinned Sparkle source revision and its license are included as well.
 
@@ -95,7 +97,8 @@ tampered feeds and archives, and performs a real replacement and relaunch.
 ## Publish
 
 The GitHub workflow tests and packages Apple Silicon and Intel builds separately
-on macOS 15 runners. Ordinary pushes and pull requests only produce workflow
+on macOS 15 runners. The libraries are built for macOS 13 and cached per
+architecture until `scripts/build-dependencies.sh` changes. Ordinary pushes and pull requests only produce workflow
 artifacts. A version tag publishes a GitHub Release after **both** builds pass:
 
 ```bash
