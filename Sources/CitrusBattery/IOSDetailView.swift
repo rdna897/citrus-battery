@@ -65,10 +65,7 @@ struct IOSDetailContent: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Image(systemName: device.symbolName)
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.secondary)
-                .frame(width: 50)
+            DeviceIcon(modelIdentifier: device.snapshot?.productType, fallbackSymbol: device.symbolName)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.displayName)
                     .font(.title2.weight(.semibold))
@@ -143,6 +140,11 @@ struct IOSDetailContent: View {
                 InfoRow("Serial number", snapshot.serialNumber, hidesWhenEmpty: true)
                 InfoRow("Battery serial", battery?.serialNumber, hidesWhenEmpty: true)
                 InfoRow("Battery manufacturer", battery?.manufacturer, hidesWhenEmpty: true)
+                InfoRow("Manufactured", battery?.estimatedManufactureDate.map {
+                    "≈ \($0.formatted(date: .abbreviated, time: .omitted)) (estimated from operating time)"
+                }, hidesWhenEmpty: true)
+                InfoRow("First used", battery?.firstUseDate?.formatted(date: .abbreviated, time: .omitted),
+                        hidesWhenEmpty: true)
                 InfoRow("Full charge capacity", capacity(battery?.fullChargeCapacity, battery), hidesWhenEmpty: true)
                 InfoRow("Design capacity", capacity(battery?.designCapacity, battery), hidesWhenEmpty: true)
                 InfoRow("Voltage", battery?.voltageMillivolts.map { String(format: "%.2f V", Double($0) / 1000) },

@@ -514,3 +514,27 @@ struct FakeSMC: SMCReading {
         #expect(unknown.deviceClass == "iPad")
     }
 }
+
+@Suite struct IPhonePackTests {
+    @Test func lifetimeTemperatureUnitsAndFirstUse() {
+        // iPhone 18 Pro Max pack values: min/max in tenths, average in degrees.
+        let pack: [String: Any] = [
+            "Temperature": 3189, "DateOfFirstUse": 811_468_800,
+            "LifetimeData": ["MinimumTemperature": 171, "MaximumTemperature": 543, "AverageTemperature": 27,
+                             "TotalOperatingTime": 987],
+        ]
+        let registry: [String: Any] = ["CurrentCapacity": 93, "MaxCapacity": 100, "CycleCount": 22,
+                                       "BatteryData": ["FullChargeCapacity": 5415, "DesignCapacity": 5335,
+                                                       "RemainingCapacity": 4774]]
+        let snapshot = MacBatterySnapshot(registry: registry, pack: pack, smc: nil, powerSource: nil)
+        #expect(snapshot.lifetime?.minimumTemperatureCelsius == 17.1)
+        #expect(snapshot.lifetime?.maximumTemperatureCelsius == 54.3)
+        #expect(snapshot.lifetime?.averageTemperatureCelsius == 27)
+        #expect(snapshot.temperatureCelsius == 31.89)
+        #expect(snapshot.chargeFraction(style: .apple) == 0.93)
+        let firstUse = snapshot.firstUseDate.map { ManufactureDateTests.utc.dateComponents([.year, .month, .day], from: $0) }
+        #expect(firstUse == DateComponents(year: 2026, month: 9, day: 19))
+        // "900618" isn't a valid week/month code, so no manufacture week is invented.
+        #expect(snapshot.manufactureWeek == nil)
+    }
+}

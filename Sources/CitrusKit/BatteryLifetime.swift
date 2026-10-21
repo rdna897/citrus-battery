@@ -19,15 +19,21 @@ public struct BatteryLifetime: Sendable, Equatable {
     public init(dictionary d: [String: Any]) {
         func int(_ key: String) -> Int? { MacBatterySnapshot.int(d[key]) }
         totalOperatingHours = int("TotalOperatingTime")
-        minimumTemperatureCelsius = int("MinimumTemperature").map(Double.init)
-        maximumTemperatureCelsius = int("MaximumTemperature").map(Double.init)
-        // Stored in tenths of a degree, unlike the minimum and maximum.
-        averageTemperatureCelsius = int("AverageTemperature").map { Double($0) / 10 }
+        minimumTemperatureCelsius = int("MinimumTemperature").map(Self.celsius)
+        maximumTemperatureCelsius = int("MaximumTemperature").map(Self.celsius)
+        averageTemperatureCelsius = int("AverageTemperature").map(Self.celsius)
         minimumPackVoltageMillivolts = int("MinimumPackVoltage")
         maximumPackVoltageMillivolts = int("MaximumPackVoltage")
         maximumChargeCurrentMilliamps = int("MaximumChargeCurrent")
         maximumDischargeCurrentMilliamps = int("MaximumDischargeCurrent")
         temperatureSamples = int("TemperatureSamples")
         cycleCountAtLastCalibration = int("CycleCountLastQmax")
+    }
+
+    /// Gauges mix whole degrees and tenths of a degree: an M4 Mac stores min/max in
+    /// degrees and the average in tenths, an iPhone the reverse. A battery never
+    /// reaches 100 °C, so anything above 100 is tenths.
+    static func celsius(_ raw: Int) -> Double {
+        raw > 100 ? Double(raw) / 10 : Double(raw)
     }
 }

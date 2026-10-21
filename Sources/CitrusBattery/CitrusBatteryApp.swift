@@ -9,6 +9,16 @@ enum Entry {
             DiagnosticDump.print()
             return
         }
+        if arguments.contains("--ios-raw") {
+            for listing in IOSDeviceReader.connectedDevices() {
+                guard let raw = IOSDeviceReader.readRaw(listing) else { print("\(listing.udid): not readable"); continue }
+                for (title, value) in [("INFO", raw.info), ("BATTERY", raw.battery), ("PACK", raw.pack), ("GESTALT", raw.gestalt)] {
+                    print("===== \(title)")
+                    printTree(value ?? [:], indent: "")
+                }
+            }
+            return
+        }
         if arguments.contains("--ios") {
             dumpIOSDevices()
             return
@@ -52,6 +62,10 @@ private func dumpIOSDevices() {
                 + "  temp \(b.temperatureCelsius.map { String(format: "%.1f °C", $0) } ?? "-")")
             print("  charging \(b.isCharging)  external \(b.isExternalPowerConnected)  serial \(b.serialNumber ?? "-")"
                 + "  maker \(b.manufacturer ?? "-")  lifetime \(b.lifetime?.totalOperatingHours.map { "\($0) h" } ?? "-")")
+            print("  iOS charge \(b.chargeFraction(style: .apple).map { String(format: "%.0f%%", $0 * 100) } ?? "-")"
+                + "  first used \(b.firstUseDate?.formatted(date: .abbreviated, time: .omitted) ?? "-")"
+                + "  made ≈ \(b.estimatedManufactureDate?.formatted(date: .abbreviated, time: .omitted) ?? "-")"
+                + "  lifetime temp \(b.lifetime?.minimumTemperatureCelsius.map { "\($0)" } ?? "-")–\(b.lifetime?.maximumTemperatureCelsius.map { "\($0)" } ?? "-") °C")
         }
     }
 }
@@ -238,5 +252,24 @@ private struct MenuBarSnapshotLabel: View {
         Text(Image(systemName: MenuBarLabel.symbolName(for: monitor.battery))) + Text(" ")
             + Text(MenuBarFormatter.render(format, values: monitor.menuBarValues(
                 temperatureUnit: .celsius, capacityStyle: .raw)))
+    }
+}
+
+/// Prints a property-list tree with short values (for --ios-raw).
+private func printTree(_ value: Any, indent: String) {
+    if let dictionary = value as? [String: Any] {
+        for key in dictionary.keys.sorted() {
+            let child = dictionary[key]!
+            if child is [String: Any] || child is [Any] {
+                print("\(indent)\(key):")
+                printTree(child, indent: indent + "  ")
+            } else {
+                print("\(indent)\(key) = \(String(describing: child).prefix(80))")
+            }
+        }
+    } else if let array = value as? [Any] {
+        print("\(indent)[\(array.count) items] \(String(describing: array.prefix(4)).prefix(120))")
+    } else {
+        print("\(indent)\(String(describing: value).prefix(80))")
     }
 }

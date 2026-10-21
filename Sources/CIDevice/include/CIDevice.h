@@ -31,6 +31,8 @@ typedef struct {
     uint32_t info_length;
     uint8_t *battery;   ///< diagnostics_relay IORegistry entry of class IOPMPowerSource
     uint32_t battery_length;
+    uint8_t *pack;      ///< IORegistry entry of class AppleSmartBatteryPack (temperature, lifetime)
+    uint32_t pack_length;
     uint8_t *gestalt;   ///< MobileGestalt answers (may be empty on newer iOS)
     uint32_t gestalt_length;
 } cid_payload;

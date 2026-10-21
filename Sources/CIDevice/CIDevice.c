@@ -89,6 +89,12 @@ cid_status cid_read(const char *udid, bool network, cid_payload *payload) {
                 to_binary(battery, &payload->battery, &payload->battery_length);
                 plist_free(battery);
             }
+            plist_t pack = NULL;
+            if (diagnostics_relay_query_ioregistry_entry(relay, NULL, "AppleSmartBatteryPack", &pack)
+                    == DIAGNOSTICS_RELAY_E_SUCCESS) {
+                to_binary(pack, &payload->pack, &payload->pack_length);
+                plist_free(pack);
+            }
 
             static const char *keys[] = {
                 "MarketingName", "DeviceColor", "SerialNumber", "ModelNumber", "RegionInfo",
@@ -120,6 +126,7 @@ done:
 void cid_free_payload(cid_payload *payload) {
     plist_mem_free(payload->info);
     plist_mem_free(payload->battery);
+    plist_mem_free(payload->pack);
     plist_mem_free(payload->gestalt);
     memset(payload, 0, sizeof *payload);
 }

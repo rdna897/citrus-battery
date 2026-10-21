@@ -64,6 +64,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     /// when the battery stores no full date.
     public var estimatedManufactureDate: Date?
     public var lifetime: BatteryLifetime?
+    /// When the device was first set up, if the gauge recorded it.
+    public var firstUseDate: Date?
     public var failures: BatteryFailure
     public var powerSource: PowerSourceInfo?
 
@@ -196,9 +198,16 @@ extension MacBatterySnapshot {
                     operatingHours: hours, week: week, now: date)
             }
         }
+        // Seconds since 2001 (Apple's reference date); 0 when not recorded.
+        firstUseDate = (Self.int(batteryData["DateOfFirstUse"]) ?? Self.int(pack["DateOfFirstUse"]))
+            .flatMap { $0 > 0 ? Date(timeIntervalSinceReferenceDate: TimeInterval($0)) : nil }
+
         failures = BatteryFailure(rawValue: Self.int(r["PermanentFailureStatus"])
             ?? Self.int(batteryData["PermanentFailureStatus"]) ?? Self.int(pack["PermanentFailureStatus"]) ?? 0)
-        self.powerSource = powerSource
+        // Without macOS's power-source API (e.g. for iPhones), the top-level
+        // percentage is the figure the device itself shows.
+        self.powerSource = powerSource ?? (topLevelIsPercent
+            ? Self.int(r["CurrentCapacity"]).map { PowerSourceInfo(chargePercent: $0) } : nil)
     }
 
     /// Decodes the Smart Battery Data packed date: `(year − 1980) << 9 | month << 5 | day`.

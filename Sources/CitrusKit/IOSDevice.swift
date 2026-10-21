@@ -1,5 +1,6 @@
 import CIDevice
 import Foundation
+import UniformTypeIdentifiers
 
 /// One read of an iPhone or iPad.
 public struct IOSDeviceSnapshot: Sendable, Equatable, Identifiable {
@@ -30,10 +31,14 @@ public struct IOSDeviceSnapshot: Sendable, Equatable, Identifiable {
 extension IOSDeviceSnapshot {
     /// Builds a snapshot from lockdown values, the diagnostics IORegistry reply and
     /// the MobileGestalt reply (each as decoded property lists).
+    ///
+    /// `pack` is the `AppleSmartBatteryPack` reply; as on the Mac, its `BatteryData`
+    /// holds temperature and lifetime data the main entry lacks.
     public init(udid: String, connection: Connection, info: [String: Any], battery: [String: Any]?,
-                gestalt: [String: Any]?, date: Date = Date()) {
+                pack: [String: Any]? = nil, gestalt: [String: Any]?, date: Date = Date()) {
         let gestaltValues = gestalt?["MobileGestalt"] as? [String: Any] ?? gestalt ?? [:]
         let registry = battery?["IORegistry"] as? [String: Any] ?? battery
+        let packRegistry = pack?["IORegistry"] as? [String: Any] ?? pack
 
         self.udid = udid
         self.connection = connection
@@ -41,13 +46,16 @@ extension IOSDeviceSnapshot {
         productType = info["ProductType"] as? String ?? gestaltValues["ProductType"] as? String ?? "iOS device"
         name = info["DeviceName"] as? String ?? productType
         marketingName = gestaltValues["MarketingName"] as? String
-            ?? IOSModelNames.name(for: productType) ?? productType
+            ?? DeviceModels.name(for: productType) ?? productType
         osVersion = info["ProductVersion"] as? String
         serialNumber = info["SerialNumber"] as? String ?? gestaltValues["SerialNumber"] as? String
         let number = info["ModelNumber"] as? String ?? gestaltValues["ModelNumber"] as? String
         let region = info["RegionInfo"] as? String ?? gestaltValues["RegionInfo"] as? String
         modelNumber = number.map { $0 + (region ?? "") }
-        self.battery = registry.flatMap { $0.isEmpty ? nil : MacBatterySnapshot(registry: $0, smc: nil, powerSource: nil, date: date) }
+        let packData = packRegistry?["BatteryData"] as? [String: Any]
+        self.battery = registry.flatMap {
+            $0.isEmpty ? nil : MacBatterySnapshot(registry: $0, pack: packData, smc: nil, powerSource: nil, date: date)
+        }
     }
 }
 
@@ -91,11 +99,22 @@ public enum IOSDeviceReader {
             return .ready(IOSDeviceSnapshot(
                 udid: listing.udid, connection: listing.connection, info: info,
                 battery: plist(payload.battery, payload.battery_length),
+                pack: plist(payload.pack, payload.pack_length),
                 gestalt: plist(payload.gestalt, payload.gestalt_length)))
         case CID_NOT_TRUSTED: return .notTrusted
         case CID_LOCKED: return .locked
         default: return .unavailable
         }
+    }
+
+    /// The undecoded replies (lockdown info, IORegistry, MobileGestalt), for diagnostics.
+    public static func readRaw(_ listing: Listing) -> (info: [String: Any]?, battery: [String: Any]?, pack: [String: Any]?, gestalt: [String: Any]?)? {
+        var payload = cid_payload()
+        let status = cid_read(listing.udid, listing.connection == .wifi, &payload)
+        defer { cid_free_payload(&payload) }
+        guard status == CID_OK else { return nil }
+        return (plist(payload.info, payload.info_length), plist(payload.battery, payload.battery_length),
+                plist(payload.pack, payload.pack_length), plist(payload.gestalt, payload.gestalt_length))
     }
 
     private static func plist(_ bytes: UnsafeMutablePointer<UInt8>?, _ length: UInt32) -> [String: Any]? {
@@ -105,25 +124,18 @@ public enum IOSDeviceReader {
     }
 }
 
-/// Marketing names for model identifiers, used when the device doesn't report one.
-/// Only well-established identifiers are listed; others fall back to the identifier.
-public enum IOSModelNames {
-    private static let names: [String: String] = [
-        "iPhone12,1": "iPhone 11", "iPhone12,3": "iPhone 11 Pro", "iPhone12,5": "iPhone 11 Pro Max",
-        "iPhone12,8": "iPhone SE (2nd generation)",
-        "iPhone13,1": "iPhone 12 mini", "iPhone13,2": "iPhone 12", "iPhone13,3": "iPhone 12 Pro",
-        "iPhone13,4": "iPhone 12 Pro Max",
-        "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13", "iPhone14,2": "iPhone 13 Pro",
-        "iPhone14,3": "iPhone 13 Pro Max", "iPhone14,6": "iPhone SE (3rd generation)",
-        "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus", "iPhone15,2": "iPhone 14 Pro",
-        "iPhone15,3": "iPhone 14 Pro Max",
-        "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus", "iPhone16,1": "iPhone 15 Pro",
-        "iPhone16,2": "iPhone 15 Pro Max",
-        "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus", "iPhone17,1": "iPhone 16 Pro",
-        "iPhone17,2": "iPhone 16 Pro Max", "iPhone17,5": "iPhone 16e",
-    ]
+/// Apple device names and icons by model identifier, from the device types macOS
+/// declares (CoreTypes). These update with macOS, so new models are covered
+/// without a hand-maintained table.
+public enum DeviceModels {
+    static var modelCodeTag: UTTagClass { UTTagClass(rawValue: "com.apple.device-model-code") }
 
-    public static func name(for productType: String) -> String? {
-        names[productType]
+    public static func type(for modelIdentifier: String) -> UTType? {
+        UTType(tag: modelIdentifier, tagClass: modelCodeTag, conformingTo: nil)
+    }
+
+    /// e.g. "iPhone19,7" → "iPhone 18 Pro Max".
+    public static func name(for modelIdentifier: String) -> String? {
+        type(for: modelIdentifier)?.localizedDescription
     }
 }

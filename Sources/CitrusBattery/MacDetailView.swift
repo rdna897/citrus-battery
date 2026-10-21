@@ -44,9 +44,7 @@ struct MacDetailContent: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Image(systemName: "laptopcomputer")
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.secondary)
+            DeviceIcon(modelIdentifier: monitor.macInfo.modelIdentifier, fallbackSymbol: "laptopcomputer")
             VStack(alignment: .leading, spacing: 2) {
                 Text(monitor.marketingName ?? "Mac")
                     .font(.title2.weight(.semibold))
@@ -150,6 +148,8 @@ struct MacDetailContent: View {
                 InfoRow("Manufacturer", battery.manufacturer, hidesWhenEmpty: true)
                 InfoRow("Manufacture date", manufactureText(battery), hidesWhenEmpty: true)
                 InfoRow("Battery age", ageText(battery), hidesWhenEmpty: true)
+                InfoRow("First used", battery.firstUseDate?.formatted(date: .abbreviated, time: .omitted),
+                        hidesWhenEmpty: true)
                 InfoRow("Gas gauge", battery.gasGaugeName)
                 InfoRow("Mac serial", monitor.macInfo.serialNumber)
                 InfoRow("Up since", monitor.macInfo.bootDate.map {
@@ -244,6 +244,28 @@ struct MacDetailContent: View {
 }
 
 // MARK: - Building blocks
+
+/// The product icon macOS has for a model identifier (e.g. "iPhone19,7"), falling
+/// back to an SF Symbol.
+struct DeviceIcon: View {
+    let modelIdentifier: String?
+    let fallbackSymbol: String
+    var size: CGFloat = 56
+
+    var body: some View {
+        if let type = modelIdentifier.flatMap(DeviceModels.type(for:)) {
+            Image(nsImage: NSWorkspace.shared.icon(for: type))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: fallbackSymbol)
+                .font(.system(size: size * 0.7, weight: .light))
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
+        }
+    }
+}
 
 /// Gas-gauge lifetime statistics; shared by the Mac and iPhone/iPad pages.
 struct LifetimeCard: View {
