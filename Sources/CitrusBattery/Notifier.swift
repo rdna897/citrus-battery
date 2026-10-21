@@ -9,19 +9,48 @@ final class Notifier: NSObject, ObservableObject {
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
 
     private var state = BatteryAlertState()
-    private var readingObserver: AnyCancellable?
+    private var observers: [AnyCancellable] = []
+    /// Per-device arming for the "charged to X%" alert, keyed by UDID.
+    private var deviceAlertArmed: [String: Bool] = [:]
 
     /// UNUserNotificationCenter needs an app bundle; it traps when run as a bare binary.
     private let center: UNUserNotificationCenter? =
         Bundle.main.bundleIdentifier != nil ? UNUserNotificationCenter.current() : nil
 
-    init(monitor: BatteryMonitor) {
+    init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor) {
         super.init()
         center?.delegate = self
-        readingObserver = monitor.$battery
+        observers.append(monitor.$battery
             .compactMap { $0 }
-            .sink { [weak self] battery in self?.evaluate(battery) }
+            .sink { [weak self] battery in self?.evaluate(battery) })
+        observers.append(iosDevices.$devices
+            .sink { [weak self] devices in self?.evaluate(devices) })
         refreshAuthorization()
+    }
+
+    private func evaluate(_ devices: [TrackedDevice]) {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: PreferenceKey.alertDeviceChargeEnabled) else { return }
+        let threshold = defaults.object(forKey: PreferenceKey.alertDeviceChargePercent) as? Int ?? 80
+        for device in devices where device.state == .ready {
+            guard let battery = device.snapshot?.battery,
+                  let fraction = battery.chargeFraction(style: .apple) else { continue }
+            let percent = Int((fraction * 100).rounded())
+            // First reading of a device only sets the arming, so launching or
+            // plugging in a device that's already above the level stays quiet.
+            guard deviceAlertArmed[device.udid] != nil else {
+                deviceAlertArmed[device.udid] = percent < threshold
+                continue
+            }
+            let result = DeviceChargeAlertRule.evaluate(
+                percent: percent, isCharging: battery.isCharging, threshold: threshold,
+                armed: deviceAlertArmed[device.udid] ?? true)
+            deviceAlertArmed[device.udid] = result.armed
+            if result.notify {
+                let message = DeviceChargeAlertRule.message(deviceName: device.displayName, percent: percent)
+                post(title: message.title, body: message.body)
+            }
+        }
     }
 
     var isAvailable: Bool { center != nil }

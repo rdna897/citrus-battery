@@ -81,6 +81,7 @@ private struct MenuBarSettings: View {
     @AppStorage(PreferenceKey.menuBarFormat) private var format = MenuBarToken.defaultFormat
     @AppStorage(PreferenceKey.batterySymbol) private var symbolPosition = BatterySymbolPosition.left
     @AppStorage(PreferenceKey.menuBarAccentColour) private var useAccentColour = false
+    @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
     @ViewState private var openAtLogin = LaunchAtLogin.isEnabled
@@ -137,6 +138,7 @@ private struct MenuBarSettings: View {
             }
             .pickerStyle(.segmented)
             Toggle("Use the macOS accent colour for charge and health bars", isOn: $useAccentColour)
+            Toggle("Show connected iPhones and iPads in the menu bar panel", isOn: $showDevices)
         }
         .onAppear { openAtLogin = LaunchAtLogin.isEnabled }
     }
@@ -149,9 +151,12 @@ private struct NotificationSettings: View {
     @AppStorage(PreferenceKey.alertLowTimeEnabled) private var lowTimeEnabled = false
     @AppStorage(PreferenceKey.alertLowTimeMinutes) private var lowTimeMinutes = 30
     @AppStorage(PreferenceKey.alertFullyCharged) private var fullyCharged = false
+    @AppStorage(PreferenceKey.alertDeviceChargeEnabled) private var deviceChargeEnabled = false
+    @AppStorage(PreferenceKey.alertDeviceChargePercent) private var deviceChargePercent = 80
 
     var body: some View {
         Form {
+            Text("This Mac").font(.headline)
             HStack {
                 Toggle("Notify when the charge falls below", isOn: $lowChargeEnabled)
                 Picker("", selection: $lowChargePercent) {
@@ -175,7 +180,20 @@ private struct NotificationSettings: View {
                 .disabled(!lowTimeEnabled)
             }
             Toggle("Notify when the battery is fully charged", isOn: $fullyCharged)
+
             SettingsNote("Each alert fires once per discharge and again after you plug in, at most every 15 minutes.")
+
+            Text("iPhone and iPad").font(.headline).padding(.top, 6)
+            HStack {
+                Toggle("Notify when a connected device charges to", isOn: $deviceChargeEnabled)
+                Picker("", selection: $deviceChargePercent) {
+                    ForEach([50, 60, 70, 75, 80, 85, 90, 95, 100], id: \.self) { Text("\($0)%").tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 80)
+                .disabled(!deviceChargeEnabled)
+            }
+            SettingsNote("Fires once per charge, and again after the device drops 5% below the level.")
 
             Divider()
 
@@ -199,7 +217,7 @@ private struct NotificationSettings: View {
             }
             .disabled(!notifier.isAvailable)
         }
-        .onChange(of: [lowChargeEnabled, lowTimeEnabled, fullyCharged]) { enabled in
+        .onChange(of: [lowChargeEnabled, lowTimeEnabled, fullyCharged, deviceChargeEnabled]) { enabled in
             if enabled.contains(true) { notifier.requestAuthorization() }
         }
         .onAppear { notifier.refreshAuthorization() }

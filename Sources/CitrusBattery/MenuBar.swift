@@ -75,7 +75,9 @@ struct MenuBarLabel: View {
 struct MenuBarPanel: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @EnvironmentObject private var navigator: Navigator
+    @EnvironmentObject private var iosDevices: IOSDeviceMonitor
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.menuBarAccentColour) private var useAccentColour = false
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
@@ -103,6 +105,20 @@ struct MenuBarPanel: View {
                 .font(.callout)
             } else {
                 Text("No battery found").foregroundStyle(.secondary)
+            }
+
+            if showDevices, !iosDevices.devices.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(iosDevices.devices) { device in
+                        Button {
+                            show(.device(device.udid))
+                        } label: {
+                            DevicePanelRow(device: device)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             Divider()
@@ -177,6 +193,49 @@ private struct SettingsPanelButton: View {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }
+        }
+    }
+}
+
+/// One iPhone or iPad in the panel: icon, name, charge and a small bar.
+private struct DevicePanelRow: View {
+    let device: TrackedDevice
+
+    var body: some View {
+        let battery = device.snapshot?.battery
+        let fraction = battery?.chargeFraction(style: .apple)
+        HStack(spacing: 8) {
+            Image(systemName: device.symbolName)
+                .frame(width: 18)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(device.displayName).lineLimit(1)
+                    Spacer()
+                    Text(stateText(fraction: fraction)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                .font(.callout)
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.1))
+                        Capsule().fill(Color.green).frame(width: proxy.size.width * (fraction ?? 0))
+                    }
+                }
+                .frame(height: 4)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func stateText(fraction: Double?) -> String {
+        switch device.state {
+        case .ready, .disconnected:
+            let charging = device.snapshot?.battery?.isCharging == true ? "⚡︎ " : ""
+            let percent = fraction.map { "\(charging)\(Int(($0 * 100).rounded()))%" } ?? "–"
+            return device.state == .disconnected ? "\(percent) (last seen)" : percent
+        case .notTrusted: return "Tap Trust"
+        case .locked: return "Locked"
+        case .unavailable: return "–"
         }
     }
 }

@@ -538,3 +538,27 @@ struct FakeSMC: SMCReading {
         #expect(snapshot.manufactureWeek == nil)
     }
 }
+
+@Suite struct DeviceChargeAlertTests {
+    @Test func firesOnceWhileChargingAndRearms() {
+        var armed = true
+        var result = DeviceChargeAlertRule.evaluate(percent: 78, isCharging: true, threshold: 80, armed: armed)
+        #expect(!result.notify); armed = result.armed
+        result = DeviceChargeAlertRule.evaluate(percent: 80, isCharging: true, threshold: 80, armed: armed)
+        #expect(result.notify); armed = result.armed
+        result = DeviceChargeAlertRule.evaluate(percent: 85, isCharging: true, threshold: 80, armed: armed)
+        #expect(!result.notify); armed = result.armed
+        // Discharging back to 77% isn't enough to re-arm; 75% is.
+        result = DeviceChargeAlertRule.evaluate(percent: 77, isCharging: false, threshold: 80, armed: armed)
+        #expect(!result.armed); armed = result.armed
+        result = DeviceChargeAlertRule.evaluate(percent: 75, isCharging: false, threshold: 80, armed: armed)
+        #expect(result.armed); armed = result.armed
+        result = DeviceChargeAlertRule.evaluate(percent: 81, isCharging: true, threshold: 80, armed: armed)
+        #expect(result.notify)
+    }
+
+    @Test func notWhenNotCharging() {
+        let result = DeviceChargeAlertRule.evaluate(percent: 90, isCharging: false, threshold: 80, armed: true)
+        #expect(!result.notify && result.armed)
+    }
+}

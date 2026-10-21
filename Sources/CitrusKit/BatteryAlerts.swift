@@ -112,3 +112,25 @@ public enum BatteryAlertRules {
         return (alerts, state)
     }
 }
+
+/// "Battery percentage of device [name] has reached X%" for iPhones and iPads:
+/// fires once when a charging device reaches the threshold, and re-arms after it
+/// drops 5 points below it.
+public enum DeviceChargeAlertRule {
+    public static let rearmMargin = 5
+
+    /// Returns whether to notify, and whether the alert is still armed afterwards.
+    public static func evaluate(percent: Int, isCharging: Bool, threshold: Int, armed: Bool) -> (notify: Bool, armed: Bool) {
+        if percent <= threshold - rearmMargin {
+            return (false, true)
+        }
+        if armed, isCharging, percent >= threshold {
+            return (true, false)
+        }
+        return (false, armed)
+    }
+
+    public static func message(deviceName: String, percent: Int) -> (title: String, body: String) {
+        ("\(deviceName) charged to \(percent)%", "Battery percentage of \(deviceName) has reached \(percent)%.")
+    }
+}

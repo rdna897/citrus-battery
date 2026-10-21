@@ -88,14 +88,16 @@ struct CitrusBatteryApp: App {
     @StateObject private var history: HistoryController
     @StateObject private var notifier: Notifier
     @StateObject private var navigator = Navigator()
-    @StateObject private var iosDevices = IOSDeviceMonitor()
+    @StateObject private var iosDevices: IOSDeviceMonitor
     @AppStorage(PreferenceKey.showInMenuBar) private var showInMenuBar = true
 
     init() {
         let monitor = BatteryMonitor()
+        let iosDevices = IOSDeviceMonitor()
         _monitor = StateObject(wrappedValue: monitor)
-        _history = StateObject(wrappedValue: HistoryController(monitor: monitor))
-        _notifier = StateObject(wrappedValue: Notifier(monitor: monitor))
+        _iosDevices = StateObject(wrappedValue: iosDevices)
+        _history = StateObject(wrappedValue: HistoryController(monitor: monitor, iosDevices: iosDevices))
+        _notifier = StateObject(wrappedValue: Notifier(monitor: monitor, iosDevices: iosDevices))
     }
 
     var body: some Scene {
@@ -129,6 +131,7 @@ struct CitrusBatteryApp: App {
             MenuBarPanel()
                 .environmentObject(monitor)
                 .environmentObject(navigator)
+                .environmentObject(iosDevices)
         } label: {
             MenuBarLabel()
                 .environmentObject(monitor)

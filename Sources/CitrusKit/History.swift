@@ -416,3 +416,22 @@ extension HistoryEntry {
         )
     }
 }
+
+extension HistoryEntry {
+    /// An iPhone or iPad reading, ready to save. Keyed by the device serial, or
+    /// its UDID when the serial isn't available.
+    public init(device: IOSDeviceSnapshot, battery: MacBatterySnapshot) {
+        self.init(
+            date: device.date,
+            deviceType: .iOS,
+            deviceSerial: device.serialNumber ?? device.udid,
+            deviceName: device.name,
+            deviceModel: device.productType,
+            osVersion: device.osVersion,
+            batterySerial: battery.serialNumber,
+            cycleCount: battery.cycleCount,
+            designCapacity: battery.designCapacity,
+            fullChargeCapacity: battery.fullChargeCapacity
+        )
+    }
+}

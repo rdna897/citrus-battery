@@ -5,8 +5,8 @@
 An open-source battery monitor for macOS, aiming to cover everything coconutBattery
 does, including the features it sells as "Plus". Nothing is paywalled.
 
-> **Status:** early. The Mac battery view, history, menu bar and notifications work;
-> iPhone/iPad support and the rest are planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
+> **Status:** early. The Mac and iPhone/iPad battery views, history, menu bar and
+> notifications work; the Advanced Viewer, information sheet and more are planned. See [docs/FEATURE_SPEC.md](docs/FEATURE_SPEC.md)
 > for the full feature list and build order.
 
 ## What works today
@@ -31,9 +31,11 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   discharge and at most every 15 minutes (needs the app bundle).
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
-- iPhone and iPad (in progress): devices connected by USB, or over WiFi when "Show this
-  iPhone when on Wi-Fi" is on in Finder, appear in the sidebar with charge, health,
-  cycles, temperature and lifetime data. `CitrusBattery --ios` prints the same.
+- iPhone and iPad: devices connected by USB, or over WiFi when "Show this iPhone when
+  on Wi-Fi" is on in Finder, appear in the sidebar and menu bar panel with charge,
+  health, cycles, temperature, lifetime data and product icons. SmartSave records them
+  in History, and an optional notification fires when a device charges to a chosen
+  level. `CitrusBattery --ios` prints the same data.
 - Works on both Apple Silicon and Intel register layouts.
 
 ## Building

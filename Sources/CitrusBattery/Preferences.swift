@@ -21,6 +21,9 @@ enum PreferenceKey {
     static let alertLowTimeEnabled = "alertLowTimeEnabled"
     static let alertLowTimeMinutes = "alertLowTimeMinutes"
     static let alertFullyCharged = "alertFullyCharged"
+    static let alertDeviceChargeEnabled = "alertDeviceChargeEnabled"
+    static let alertDeviceChargePercent = "alertDeviceChargePercent"
+    static let showDevicesInMenuBar = "showDevicesInMenuBar"
 }
 
 /// Where the battery icon sits next to the menu bar text.
