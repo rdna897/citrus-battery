@@ -10,9 +10,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit")]),
+        .target(name: "CPowerUI", linkerSettings: [.linkedFramework("Foundation")]),
         .target(
             name: "CitrusKit",
-            dependencies: ["CSMC"],
+            dependencies: ["CSMC", "CPowerUI"],
             linkerSettings: [.linkedFramework("IOKit")]
         ),
         .executableTarget(name: "CitrusBattery", dependencies: ["CitrusKit"]),

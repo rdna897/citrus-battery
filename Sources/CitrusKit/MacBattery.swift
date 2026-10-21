@@ -97,6 +97,12 @@ public struct MacBatterySnapshot: Sendable, Equatable {
         return Double(voltageMillivolts) * Double(amperageMilliamps) / 1_000_000
     }
 
+    /// Cycles since the gauge last recalibrated its capacity estimate.
+    public var cyclesSinceCalibration: Int? {
+        guard let cycleCount, let last = lifetime?.cycleCountAtLastCalibration, last <= cycleCount else { return nil }
+        return cycleCount - last
+    }
+
     /// Minutes until empty or full, whichever applies, preferring macOS's estimate.
     public var timeRemainingMinutes: Int? {
         if isCharging {

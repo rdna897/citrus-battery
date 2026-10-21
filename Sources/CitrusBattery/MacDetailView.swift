@@ -83,7 +83,14 @@ struct MacDetailContent: View {
                             battery.timeRemainingMinutes.map(DurationFormat.hoursMinutes))
                     InfoRow("Charge cycles", cyclesText(battery))
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
+                    if let limit = monitor.chargeLimit {
+                        InfoRow("Charge limit", chargeLimitText(limit), hidesWhenEmpty: true)
+                        InfoRow("Optimized charging", optimizedChargingText(limit), hidesWhenEmpty: true)
+                    }
                     InfoRow("macOS health", battery.powerSource?.healthDescription, hidesWhenEmpty: true)
+                }
+                if let advice = monitor.chargeLimit?.advice(cyclesSinceCalibration: battery.cyclesSinceCalibration) {
+                    AdviceBox(advice: advice)
                 }
             }
         }
@@ -168,6 +175,9 @@ struct MacDetailContent: View {
                 })
                 InfoRow("Max charge current", lifetime.maximumChargeCurrentMilliamps.map { "\($0) mA" })
                 InfoRow("Max discharge current", lifetime.maximumDischargeCurrentMilliamps.map { "\(abs($0)) mA" })
+                InfoRow("Gauge last calibrated", monitor.battery?.cyclesSinceCalibration.map {
+                    $0 == 0 ? "This cycle" : "\($0) cycle\($0 == 1 ? "" : "s") ago"
+                }, hidesWhenEmpty: true)
             }
         }
     }
@@ -191,8 +201,20 @@ struct MacDetailContent: View {
     }
 
     private func cyclesText(_ battery: MacBatterySnapshot) -> String? {
-        guard let cycles = battery.cycleCount else { return nil }
-        return battery.designCycleCount.map { "\(cycles) of \($0)" } ?? "\(cycles)"
+        battery.cycleCount.map(String.init)
+    }
+
+    private func chargeLimitText(_ limit: ChargeLimitStatus) -> String? {
+        var parts: [String] = []
+        if let percent = limit.macOSLimitPercent { parts.append("\(percent)% (macOS)") }
+        if let level = limit.smcChargeLevelLimit { parts.append("\(level)% (set in firmware)") }
+        parts += limit.thirdPartyLimiters.map { "set by \($0)" }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    private func optimizedChargingText(_ limit: ChargeLimitStatus) -> String? {
+        guard limit.optimizedChargingEnabled else { return nil }
+        return limit.optimizedChargingEngaged ? "On, holding charge for now" : "On"
     }
 
     private func statusText(_ battery: MacBatterySnapshot) -> String {
@@ -265,6 +287,25 @@ struct Card<Content: View>: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct AdviceBox: View {
+    let advice: ChargeLimitAdvice
+
+    var body: some View {
+        Label {
+            Text(advice.message)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: advice.level == .caution ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .foregroundStyle(advice.level == .caution ? Color.orange : Color.secondary)
+        }
+        .font(.callout)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((advice.level == .caution ? Color.orange : Color.primary).opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

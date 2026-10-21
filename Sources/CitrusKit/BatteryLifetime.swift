@@ -13,6 +13,8 @@ public struct BatteryLifetime: Sendable, Equatable {
     /// Negative: current flowing out of the battery.
     public var maximumDischargeCurrentMilliamps: Int?
     public var temperatureSamples: Int?
+    /// Cycle count when the gauge last recalibrated its capacity estimate (Qmax).
+    public var cycleCountAtLastCalibration: Int?
 
     public init(dictionary d: [String: Any]) {
         func int(_ key: String) -> Int? { MacBatterySnapshot.int(d[key]) }
@@ -26,5 +28,6 @@ public struct BatteryLifetime: Sendable, Equatable {
         maximumChargeCurrentMilliamps = int("MaximumChargeCurrent")
         maximumDischargeCurrentMilliamps = int("MaximumDischargeCurrent")
         temperatureSamples = int("TemperatureSamples")
+        cycleCountAtLastCalibration = int("CycleCountLastQmax")
     }
 }

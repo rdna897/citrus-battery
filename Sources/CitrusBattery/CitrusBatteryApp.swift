@@ -58,7 +58,7 @@ enum DiagnosticDump {
             + "  raw \(pct(b.rawChargeFraction))  macOS \(b.powerSource?.chargePercent.map { "\($0)%" } ?? "-")")
         Swift.print("Health: \(pct(b.healthFraction))  design \(b.designCapacity.map(String.init) ?? "-") mAh"
             + "  nominal \(b.nominalChargeCapacity.map(String.init) ?? "-") mAh  macOS: \(b.powerSource?.healthDescription ?? "-")")
-        Swift.print("Cycles: \(b.cycleCount.map(String.init) ?? "-") / \(b.designCycleCount.map(String.init) ?? "-")"
+        Swift.print("Cycles: \(b.cycleCount.map(String.init) ?? "-")"
             + "  temperature \(fmt(b.temperatureCelsius)) °C")
         Swift.print("Voltage \(b.voltageMillivolts.map(String.init) ?? "-") mV  amperage \(b.amperageMilliamps.map(String.init) ?? "-") mA"
             + "  battery power \(fmt(b.batteryPowerWatts)) W")
@@ -75,6 +75,15 @@ enum DiagnosticDump {
                 + "temperature \(fmt(l.minimumTemperatureCelsius))–\(fmt(l.maximumTemperatureCelsius)) °C "
                 + "(avg \(fmt(l.averageTemperatureCelsius))), pack "
                 + "\(l.minimumPackVoltageMillivolts.map(String.init) ?? "-")–\(l.maximumPackVoltageMillivolts.map(String.init) ?? "-") mV")
+        }
+        let limit = ChargeLimitReader.read()
+        Swift.print("Charge limit: macOS \(limit.macOSLimitPercent.map { "\($0)%" } ?? "off")"
+            + "  optimized \(limit.optimizedChargingEnabled ? (limit.optimizedChargingEngaged ? "on, engaged" : "on") : "off")"
+            + "  third-party \(limit.thirdPartyLimiters.isEmpty ? "none" : limit.thirdPartyLimiters.joined(separator: ", "))"
+            + "  BCLM \(limit.smcChargeLevelLimit.map(String.init) ?? "-")"
+            + "  gauge calibrated \(b.cyclesSinceCalibration.map { "\($0) cycles ago" } ?? "-")")
+        if let advice = limit.advice(cyclesSinceCalibration: b.cyclesSinceCalibration) {
+            Swift.print("Advice (\(advice.level)): \(advice.message)")
         }
         Swift.print("Failures: \(b.failures.messages.isEmpty ? "none" : b.failures.messages.joined(separator: ", "))")
     }

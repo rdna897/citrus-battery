@@ -193,3 +193,42 @@ struct FakeSMC: SMCReading {
         #expect(snapshot.estimatedManufactureDate != nil)
     }
 }
+
+@Suite struct ChargeLimitTests {
+    @Test func noLimitGivesNoAdvice() {
+        #expect(ChargeLimitStatus(optimizedChargingEnabled: true).advice(cyclesSinceCalibration: 3) == nil)
+        #expect(!ChargeLimitStatus(optimizedChargingEnabled: true).isLimiting)
+    }
+
+    @Test func macOSLimitIsReassuring() {
+        let advice = ChargeLimitStatus(macOSLimitPercent: 95).advice(cyclesSinceCalibration: 6)
+        #expect(advice?.level == .info)
+        #expect(advice?.message.contains("occasionally charges to 100%") == true)
+    }
+
+    @Test func optimizedHoldIsReassuring() {
+        let status = ChargeLimitStatus(optimizedChargingEnabled: true, optimizedChargingEngaged: true)
+        #expect(status.isLimiting)
+        #expect(status.advice(cyclesSinceCalibration: nil)?.level == .info)
+    }
+
+    @Test func thirdPartyLimiterWarnsAboutCalibration() {
+        let advice = ChargeLimitStatus(macOSLimitPercent: 80, thirdPartyLimiters: ["AlDente"])
+            .advice(cyclesSinceCalibration: 25)
+        #expect(advice?.level == .caution)
+        #expect(advice?.message.hasPrefix("AlDente is limiting") == true)
+        #expect(advice?.message.contains("recalibrated 25 cycles ago") == true)
+    }
+
+    @Test func firmwareLevelLimitCountsAsThirdParty() {
+        let status = ChargeLimitStatus(smcChargeLevelLimit: 60)
+        #expect(status.hasThirdPartyLimit)
+        #expect(status.advice(cyclesSinceCalibration: nil)?.message.hasPrefix("Another app is") == true)
+    }
+
+    @Test func cyclesSinceCalibration() {
+        let pack: [String: Any] = ["LifetimeData": ["CycleCountLastQmax": 40]]
+        let snapshot = MacBatterySnapshot(registry: SnapshotTests.appleSilicon, pack: pack, smc: nil, powerSource: nil)
+        #expect(snapshot.cyclesSinceCalibration == 6)
+    }
+}

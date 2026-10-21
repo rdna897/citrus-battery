@@ -18,8 +18,10 @@ final class BatteryMonitor: ObservableObject {
     @Published private(set) var marketingName: String?
     /// System power over the last two minutes, for the chart.
     @Published private(set) var powerHistory: [PowerSample] = []
+    @Published private(set) var chargeLimit: ChargeLimitStatus?
 
     private var timer: Timer?
+    private var chargeLimitTimer: Timer?
     private var interval: UpdateInterval
     private var defaultsObserver: AnyCancellable?
 
@@ -40,6 +42,20 @@ final class BatteryMonitor: ObservableObject {
         Task.detached(priority: .utility) {
             let name = MacInfo.marketingName()
             await MainActor.run { [weak self] in self?.marketingName = name }
+        }
+
+        refreshChargeLimit()
+        chargeLimitTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshChargeLimit() }
+        }
+    }
+
+    /// Charging policy changes rarely and reading it involves XPC, so it is
+    /// polled separately from the live readings, off the main thread.
+    func refreshChargeLimit() {
+        Task.detached(priority: .utility) {
+            let status = ChargeLimitReader.read()
+            await MainActor.run { [weak self] in self?.chargeLimit = status }
         }
     }
 
