@@ -28,7 +28,7 @@ for binary in "$APP/Contents/MacOS/CitrusBattery" "$APP/Contents/Frameworks"/*.d
         echo "error: $binary still links to Homebrew outside the app bundle" >&2
         exit 1
     fi
-    lipo -verify_arch "$ARCH" "$binary"
+    lipo "$binary" -verify_arch "$ARCH"
 done
 codesign --verify --deep --strict "$APP"
 if ! codesign -dvv "$APP" 2>&1 | grep '^Signature=adhoc$' >/dev/null; then
