@@ -41,6 +41,10 @@ libraries. Building on a newer Mac can produce a higher minimum version.
 Packaging also runs the extracted app through normal GUI startup. It must finish
 reading notification settings and open a visible application window, then exit
 cleanly. This check exercises code that the command-line diagnostics do not run.
+It launches through LaunchServices, as Finder does. On the hosted Intel VM,
+which can fail in Metal rendering, CI runs the notification startup check
+without rendering; Apple Silicon runs the full GUI check. Verify the downloaded
+Apple Silicon candidate on a physical Mac before publishing a startup fix.
 To run it separately on a built app:
 
 ```bash

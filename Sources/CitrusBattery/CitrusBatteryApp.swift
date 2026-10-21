@@ -1,10 +1,27 @@
 import CitrusKit
+import Dispatch
 import SwiftUI
 
 @main
 enum Entry {
     static func main() {
+        if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1",
+           let path = ProcessInfo.processInfo.environment["CITRUS_SMOKE_PID_FILE"] {
+            try? String(ProcessInfo.processInfo.processIdentifier).write(toFile: path, atomically: true, encoding: .utf8)
+        }
         let arguments = CommandLine.arguments
+        if arguments.contains("--notification-smoke-test") {
+            MainActor.assumeIsolated {
+                let monitor = BatteryMonitor()
+                let devices = IOSDeviceMonitor()
+                let notifier = Notifier(monitor: monitor, iosDevices: devices)
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                    withExtendedLifetime((monitor, devices, notifier)) { exit(0) }
+                }
+            }
+            dispatchMain()
+        }
         if arguments.contains("--dump") {
             DiagnosticDump.print()
             return

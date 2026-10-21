@@ -23,8 +23,12 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
+            launch_check: gui
           - runner: macos-15-intel
             arch: x86_64
+            # The hosted Intel VM's virtual GPU can abort in Metal rendering.
+            # Exercise the notification startup path without requiring its GPU.
+            launch_check: notifications
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     steps:
@@ -47,6 +51,7 @@ jobs:
       - name: Package ad hoc signed app and sources
         env:
           BUILD: ${{ github.run_number }}
+          CITRUS_LAUNCH_CHECK: ${{ matrix.launch_check }}
         run: ./scripts/package-release.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

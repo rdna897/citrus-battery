@@ -3,34 +3,59 @@
 
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 
 
 def check_launch(app: Path) -> None:
-    executable = app.resolve() / "Contents/MacOS/CitrusBattery"
-    environment = dict(os.environ, CITRUS_GUI_SMOKE_TEST="1")
-    with tempfile.TemporaryFile(mode="w+") as log:
-        process = subprocess.Popen([str(executable)], env=environment, stdout=log, stderr=log)
-        try:
-            result = process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-            raise RuntimeError("GUI launch check timed out") from None
-        finally:
-            log.seek(0)
-            output = log.read()
+    app = app.resolve()
+    executable = app / "Contents/MacOS/CitrusBattery"
+    mode = os.environ.get("CITRUS_LAUNCH_CHECK", "gui")
+    if mode not in {"gui", "notifications"}:
+        raise ValueError(f"Unknown launch check mode: {mode}")
+    with tempfile.TemporaryDirectory() as temporary:
+        directory = Path(temporary)
+        stdout = directory / "stdout.log"
+        stderr = directory / "stderr.log"
+        pid_file = directory / "app.pid"
+        environment = dict(os.environ, CITRUS_GUI_SMOKE_TEST="1", CITRUS_SMOKE_PID_FILE=str(pid_file))
+        if mode == "gui":
+            # Finder launches through LaunchServices, which sends SwiftUI its
+            # initial open event. Running the executable directly can omit it.
+            command = ["open", "-n", "-W", "--env", "CITRUS_GUI_SMOKE_TEST=1",
+                       "--env", f"CITRUS_SMOKE_PID_FILE={pid_file}",
+                       "--stdout", str(stdout), "--stderr", str(stderr), str(app)]
+        else:
+            command = [str(executable), "--notification-smoke-test"]
+        with stdout.open("a") as out, stderr.open("a") as err:
+            process = subprocess.Popen(command, env=environment, stdout=out, stderr=err)
+            try:
+                result = process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                if pid_file.exists():
+                    pid = int(pid_file.read_text())
+                    try:
+                        path = subprocess.check_output(["ps", "-p", str(pid), "-o", "comm="], stderr=subprocess.DEVNULL).decode().strip()
+                        if path == str(executable):
+                            os.kill(pid, signal.SIGTERM)
+                    except (ProcessLookupError, subprocess.CalledProcessError):
+                        pass
+                raise RuntimeError(f"{mode} launch check timed out") from None
+        output = stdout.read_text() + stderr.read_text()
         if result != 0:
-            raise RuntimeError(f"App exited during GUI launch (status {result}):\n{output}")
-        for checkpoint in [
-            "Citrus notification settings check passed",
-            "Citrus GUI launch check passed",
-        ]:
+            raise RuntimeError(f"App exited during {mode} launch (status {result}):\n{output}")
+        checkpoints = ["Citrus notification settings check passed"]
+        if mode == "gui":
+            checkpoints.append("Citrus GUI launch check passed")
+        for checkpoint in checkpoints:
             if checkpoint not in output:
                 raise RuntimeError(f"Missing launch checkpoint: {checkpoint}\n{output}")
-    print("GUI launch passed: notification settings completed and an app window opened")
+    print("GUI launch passed: notification settings completed and an app window opened" if mode == "gui"
+          else "Notification startup passed (GUI rendering not exercised)")
 
 
 if __name__ == "__main__":
