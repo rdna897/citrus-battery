@@ -17,6 +17,7 @@ struct IOSDetailView: View {
         }
         .navigationTitle(devices.device(udid: udid)?.displayName ?? "Device")
         .toolbar {
+            AdvancedViewerButton(target: udid)
             Button {
                 devices.refresh()
             } label: {

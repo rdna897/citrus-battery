@@ -562,3 +562,31 @@ struct FakeSMC: SMCReading {
         #expect(!result.notify && result.armed)
     }
 }
+
+@Suite struct AdvancedInfoTests {
+    @Test func treeFromPropertyList() {
+        let node = InfoNode.tree("Battery", [
+            "CycleCount": 46, "IsCharging": NSNumber(value: true), "Raw": Data([0xde, 0xad]),
+            "Nested": ["A": 1], "List": [1, 2],
+        ] as [String: Any])
+        #expect(node.value == "5 items")
+        #expect(node.children?.map(\.title) == ["CycleCount", "IsCharging", "List", "Nested", "Raw"])
+        let values = Dictionary(uniqueKeysWithValues: (node.children ?? []).map { ($0.title, $0.value) })
+        #expect(values["IsCharging"] == "Yes")
+        #expect(values["Raw"] == "dead")
+        #expect(values["Nested"] == "1 item")
+        #expect(values["List"] == "2 items")
+        // Ids include the path, so identical keys in different branches stay distinct.
+        #expect(node.children?.first { $0.title == "Nested" }?.children?.first?.id == "Battery/Nested/A")
+    }
+
+    @Test func tabSeparatedCopy() {
+        let node = InfoNode("Storage", "1 drive", children: [InfoNode("Life used", "0%", path: "Storage")])
+        #expect(node.tabSeparated() == ["Storage\t1 drive", "  Life used\t0%"])
+    }
+
+    @Test func usbSpeeds() {
+        #expect(AdvancedInfo.usbSpeed(2) == "USB 2.0 High Speed (480 Mb/s)")
+        #expect(AdvancedInfo.usbSpeed(9).hasPrefix("Unknown"))
+    }
+}

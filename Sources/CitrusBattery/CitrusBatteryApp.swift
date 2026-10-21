@@ -9,6 +9,19 @@ enum Entry {
             DiagnosticDump.print()
             return
         }
+        if arguments.contains("--advanced") {
+            let info = MacInfo.read()
+            var sections = AdvancedInfo.mac(info: info, marketingName: MacInfo.marketingName())
+            for listing in IOSDeviceReader.connectedDevices() {
+                if let raw = IOSDeviceReader.readRaw(listing) {
+                    sections += AdvancedInfo.device(info: raw.info, battery: raw.battery, pack: raw.pack)
+                }
+            }
+            for section in sections {
+                print(section.tabSeparated().joined(separator: "\n"))
+            }
+            return
+        }
         if arguments.contains("--ios-raw") {
             for listing in IOSDeviceReader.connectedDevices() {
                 guard let raw = IOSDeviceReader.readRaw(listing) else { print("\(listing.udid): not readable"); continue }
@@ -118,6 +131,12 @@ struct CitrusBatteryApp: App {
                 Button("Refresh iPhone/iPad") { iosDevices.refresh() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
             }
+        }
+
+        WindowGroup("Advanced Viewer", id: "advanced", for: String.self) { $target in
+            AdvancedViewer(target: target ?? AdvancedTarget.mac)
+                .environmentObject(monitor)
+                .environmentObject(iosDevices)
         }
 
         Settings {

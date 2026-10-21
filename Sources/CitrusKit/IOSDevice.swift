@@ -73,6 +73,11 @@ public enum IOSDeviceReader {
     public struct Listing: Sendable, Equatable {
         public var udid: String
         public var connection: IOSDeviceSnapshot.Connection
+
+        public init(udid: String, connection: IOSDeviceSnapshot.Connection) {
+            self.udid = udid
+            self.connection = connection
+        }
     }
 
     /// Devices currently visible over USB, or over WiFi when "Show this iPhone when
@@ -93,6 +98,23 @@ public enum IOSDeviceReader {
     /// device's current IPv4 address, found on Bonjour by its WiFi MAC address
     /// (remembered from an earlier reading).
     public static func read(_ listing: Listing) -> IOSDeviceStatus {
+        let (status, replies) = readReplies(listing)
+        switch status {
+        case CID_OK:
+            guard let info = replies.info else { return .unavailable }
+            return .ready(IOSDeviceSnapshot(
+                udid: listing.udid, connection: listing.connection, info: info,
+                battery: replies.battery, pack: replies.pack, gestalt: replies.gestalt))
+        case CID_NOT_TRUSTED: return .notTrusted
+        case CID_LOCKED: return .locked
+        default: return .unavailable
+        }
+    }
+
+    public typealias Replies = (info: [String: Any]?, battery: [String: Any]?, pack: [String: Any]?, gestalt: [String: Any]?)
+
+    /// Connects (with the WiFi IPv4 fallback) and decodes every reply.
+    static func readReplies(_ listing: Listing) -> (cid_status, Replies) {
         var payload = cid_payload()
         // CITRUS_FORCE_IPV4=1 skips usbmuxd's address to exercise the fallback.
         let forceFallback = ProcessInfo.processInfo.environment["CITRUS_FORCE_IPV4"] != nil
@@ -106,22 +128,14 @@ public enum IOSDeviceReader {
             cid_free_payload(&payload)
             status = cid_read_at(listing.udid, ipv4, &payload)
         }
+        guard status == CID_OK else { return (status, (nil, nil, nil, nil)) }
 
-        switch status {
-        case CID_OK:
-            guard let info = plist(payload.info, payload.info_length) else { return .unavailable }
-            if let mac = info["WiFiAddress"] as? String {
-                KnownDevices.remember(wifiAddress: mac, for: listing.udid)
-            }
-            return .ready(IOSDeviceSnapshot(
-                udid: listing.udid, connection: listing.connection, info: info,
-                battery: plist(payload.battery, payload.battery_length),
-                pack: plist(payload.pack, payload.pack_length),
-                gestalt: plist(payload.gestalt, payload.gestalt_length)))
-        case CID_NOT_TRUSTED: return .notTrusted
-        case CID_LOCKED: return .locked
-        default: return .unavailable
+        let info = plist(payload.info, payload.info_length)
+        if let mac = info?["WiFiAddress"] as? String {
+            KnownDevices.remember(wifiAddress: mac, for: listing.udid)
         }
+        return (status, (info, plist(payload.battery, payload.battery_length),
+                         plist(payload.pack, payload.pack_length), plist(payload.gestalt, payload.gestalt_length)))
     }
 
     /// Browses briefly for WiFi-connectable devices. Besides finding nothing in
@@ -140,13 +154,9 @@ public enum IOSDeviceReader {
     }
 
     /// The undecoded replies (lockdown info, IORegistry, MobileGestalt), for diagnostics.
-    public static func readRaw(_ listing: Listing) -> (info: [String: Any]?, battery: [String: Any]?, pack: [String: Any]?, gestalt: [String: Any]?)? {
-        var payload = cid_payload()
-        let status = cid_read(listing.udid, listing.connection == .wifi, &payload)
-        defer { cid_free_payload(&payload) }
-        guard status == CID_OK else { return nil }
-        return (plist(payload.info, payload.info_length), plist(payload.battery, payload.battery_length),
-                plist(payload.pack, payload.pack_length), plist(payload.gestalt, payload.gestalt_length))
+    public static func readRaw(_ listing: Listing) -> Replies? {
+        let (status, replies) = readReplies(listing)
+        return status == CID_OK ? replies : nil
     }
 
     private static func plist(_ bytes: UnsafeMutablePointer<UInt8>?, _ length: UInt32) -> [String: Any]? {

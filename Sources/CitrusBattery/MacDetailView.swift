@@ -8,6 +8,7 @@ struct MacDetailView: View {
             MacDetailContent()
         }
         .navigationTitle("This Mac")
+        .toolbar { AdvancedViewerButton(target: AdvancedTarget.mac) }
     }
 }
 

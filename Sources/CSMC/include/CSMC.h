@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "CNVMe.h"
 
 /// Opaque handle to an open AppleSMC user-client connection (0 = closed).
 typedef uint32_t csmc_connection;

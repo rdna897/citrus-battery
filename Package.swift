@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "CitrusBattery", targets: ["CitrusBattery"]),
     ],
     targets: [
-        .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit")]),
+        .target(name: "CSMC", linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]),
         .target(name: "CPowerUI", linkerSettings: [.linkedFramework("Foundation")]),
         // libimobiledevice from Homebrew (Apple silicon and Intel prefixes).
         .target(
