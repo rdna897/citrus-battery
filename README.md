@@ -33,6 +33,11 @@ does, including the features it sells as "Plus". Nothing is paywalled.
   device report as a searchable tree, NVMe SSD health (life used, data read/written,
   power-on hours, errors) plus since-boot statistics, displays and USB devices, with
   copy as tab-separated text. `CitrusBattery --advanced` prints the same.
+- Full Mac model names ("MacBook Air (13-inch, M4, 2025)") and, for Intel Macs, the
+  manufacture date from the serial number.
+- A low-health notice below 80% with a replacement search (iFixit), Help → Find
+  Replacement Battery and Copy Diagnostic Report, View → History (⌘Y) and Advanced
+  Viewer (⌥⌘I), and `citrusbattery://mac|history|device/<udid>|advanced[/<udid>]` links.
 - Settings: 8 temperature units, mAh or Wh, raw or macOS-style percentages,
   delayed (smoothed) or fast (1 s) refresh.
 - iPhone and iPad: devices connected by USB, or over WiFi when "Show this iPhone when

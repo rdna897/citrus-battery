@@ -100,6 +100,11 @@ public struct MacInfo: Sendable, Equatable {
     public var osVersion: String
     public var bootDate: Date?
 
+    /// When this Mac was made, for Intel Macs whose serial encodes it.
+    public var manufactureDate: DateComponents? {
+        serialNumber.flatMap { BatteryOrigin.macManufactureDate(serial: $0, modelIdentifier: modelIdentifier) }
+    }
+
     public static func read() -> MacInfo {
         let platform = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         defer { if platform != IO_OBJECT_NULL { IOObjectRelease(platform) } }
@@ -128,8 +133,25 @@ public struct MacInfo: Sendable, Equatable {
         )
     }
 
-    /// Marketing name such as "MacBook Air", via `system_profiler`. Slow (~1 s); call off the main thread.
+    /// Full marketing name such as "MacBook Air (13-inch, M4, 2025)", as About This
+    /// Mac shows it. Comes from MobileGestalt; falls back to `system_profiler`
+    /// (just "MacBook Air", and slow), so call off the main thread.
     public static func marketingName() -> String? {
+        gestaltMarketingName() ?? systemProfilerName()
+    }
+
+    /// `MGCopyAnswer("marketing-name")` from libMobileGestalt (read-only).
+    static func gestaltMarketingName() -> String? {
+        guard let handle = dlopen("/usr/lib/libMobileGestalt.dylib", RTLD_NOW),
+              let symbol = dlsym(handle, "MGCopyAnswer")
+        else { return nil }
+        typealias CopyAnswer = @convention(c) (CFString) -> Unmanaged<CFTypeRef>?
+        let copyAnswer = unsafeBitCast(symbol, to: CopyAnswer.self)
+        let name = copyAnswer("marketing-name" as CFString)?.takeRetainedValue() as? String
+        return name?.isEmpty == false ? name : nil
+    }
+
+    static func systemProfilerName() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
         process.arguments = ["SPHardwareDataType", "-json"]

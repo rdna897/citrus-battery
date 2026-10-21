@@ -91,6 +91,9 @@ struct MacDetailContent: View {
                 if let advice = monitor.chargeLimit?.advice(cyclesSinceCalibration: battery.cyclesSinceCalibration) {
                     AdviceBox(advice: advice)
                 }
+                LowHealthNotice(healthFraction: battery.healthFraction,
+                                model: monitor.marketingName ?? monitor.macInfo.modelIdentifier,
+                                batteryKey: battery.serialNumber ?? "mac")
             }
         }
     }
@@ -153,6 +156,7 @@ struct MacDetailContent: View {
                         hidesWhenEmpty: true)
                 InfoRow("Gas gauge", battery.gasGaugeName)
                 InfoRow("Mac serial", monitor.macInfo.serialNumber)
+                InfoRow("Mac manufactured", monitor.macInfo.manufactureDate.flatMap(dateText), hidesWhenEmpty: true)
                 InfoRow("Up since", monitor.macInfo.bootDate.map {
                     $0.formatted(date: .abbreviated, time: .shortened)
                 })

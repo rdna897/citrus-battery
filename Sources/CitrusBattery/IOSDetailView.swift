@@ -121,6 +121,9 @@ struct IOSDetailContent: View {
                              .map { $0 + (capacity(battery.designCapacity, battery) ?? "—") },
                          tint: healthColour(battery.healthFraction))
                 Divider()
+                LowHealthNotice(healthFraction: battery.healthFraction,
+                                model: device.snapshot?.marketingName ?? "iPhone",
+                                batteryKey: battery.serialNumber ?? device.udid)
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     InfoRow("Status", status(battery))
                     InfoRow("Charge cycles", battery.cycleCount.map(String.init))

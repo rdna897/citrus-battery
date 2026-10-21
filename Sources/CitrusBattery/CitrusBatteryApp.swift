@@ -125,12 +125,7 @@ struct CitrusBatteryApp: App {
                 .frame(minWidth: 760, minHeight: 520)
         }
         .commands {
-            CommandGroup(after: .toolbar) {
-                Button("Refresh") { monitor.refresh() }
-                    .keyboardShortcut("r")
-                Button("Refresh iPhone/iPad") { iosDevices.refresh() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
-            }
+            AppCommands(monitor: monitor, navigator: navigator, iosDevices: iosDevices)
         }
 
         WindowGroup("Advanced Viewer", id: "advanced", for: String.self) { $target in
@@ -161,51 +156,65 @@ struct CitrusBatteryApp: App {
 
 /// `CitrusBattery --dump` prints current readings, for debugging and bug reports.
 enum DiagnosticDump {
+    /// The same readings as text, for Help → Copy Diagnostic Report.
+    static func report() -> String {
+        var lines: [String] = []
+        let bundle = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development build"
+        lines.append("Citrus Battery \(bundle)")
+        capture { lines.append($0) }
+        return lines.joined(separator: "\n")
+    }
+
     static func print() {
+        capture { Swift.print($0) }
+    }
+
+    private static func capture(_ emit: (String) -> Void) {
+        func print(_ line: String) { emit(line) }
         let info = MacInfo.read()
-        Swift.print("Mac: \(info.modelIdentifier) \(info.modelNumber ?? "") serial=\(info.serialNumber ?? "-")")
-        Swift.print("macOS: \(info.osVersion)  chip: \(info.chip ?? "-")")
+        print("Mac: \(info.modelIdentifier) \(info.modelNumber ?? "") serial=\(info.serialNumber ?? "-")")
+        print("macOS: \(info.osVersion)  chip: \(info.chip ?? "-")")
 
         let power = PowerReadings.read()
-        Swift.print("System power: \(fmt(power.systemWatts)) W  adapter: \(fmt(power.adapterWatts)) W  "
+        print("System power: \(fmt(power.systemWatts)) W  adapter: \(fmt(power.adapterWatts)) W  "
             + "(\(fmt(power.adapterVolts)) V × \(fmt(power.adapterAmps)) A)  CPU: \(fmt(power.cpuTemperatureCelsius)) °C")
 
         guard let b = MacBatteryReader.read() else {
-            Swift.print("No battery found")
+            print("No battery found")
             return
         }
-        Swift.print("Charge: \(b.currentCapacity.map(String.init) ?? "-") / \(b.fullChargeCapacity.map(String.init) ?? "-") mAh"
+        print("Charge: \(b.currentCapacity.map(String.init) ?? "-") / \(b.fullChargeCapacity.map(String.init) ?? "-") mAh"
             + "  raw \(pct(b.rawChargeFraction))  macOS \(b.powerSource?.chargePercent.map { "\($0)%" } ?? "-")")
-        Swift.print("Health: \(pct(b.healthFraction))  design \(b.designCapacity.map(String.init) ?? "-") mAh"
+        print("Health: \(pct(b.healthFraction))  design \(b.designCapacity.map(String.init) ?? "-") mAh"
             + "  nominal \(b.nominalChargeCapacity.map(String.init) ?? "-") mAh  macOS: \(b.powerSource?.healthDescription ?? "-")")
-        Swift.print("Cycles: \(b.cycleCount.map(String.init) ?? "-")"
+        print("Cycles: \(b.cycleCount.map(String.init) ?? "-")"
             + "  temperature \(fmt(b.temperatureCelsius)) °C")
-        Swift.print("Voltage \(b.voltageMillivolts.map(String.init) ?? "-") mV  amperage \(b.amperageMilliamps.map(String.init) ?? "-") mA"
+        print("Voltage \(b.voltageMillivolts.map(String.init) ?? "-") mV  amperage \(b.amperageMilliamps.map(String.init) ?? "-") mA"
             + "  battery power \(fmt(b.batteryPowerWatts)) W")
-        Swift.print("Charging \(b.isCharging)  external \(b.isExternalPowerConnected)  full \(b.isFullyCharged)"
+        print("Charging \(b.isCharging)  external \(b.isExternalPowerConnected)  full \(b.isFullyCharged)"
             + "  remaining \(b.timeRemainingMinutes.map(DurationFormat.hoursMinutes) ?? "-")")
-        Swift.print("Adapter: \(b.adapter?.watts.map { "\($0) W" } ?? "-") \(b.adapter?.name ?? "")")
-        Swift.print("Serial: \(b.serialNumber ?? "-")  gauge: \(b.gasGaugeName ?? "-")  maker: \(b.manufacturer ?? "-")")
+        print("Adapter: \(b.adapter?.watts.map { "\($0) W" } ?? "-") \(b.adapter?.name ?? "")")
+        print("Serial: \(b.serialNumber ?? "-")  gauge: \(b.gasGaugeName ?? "-")  maker: \(b.manufacturer ?? "-")")
         let made = b.manufactureDate.map { "\($0.year ?? 0)-\($0.month ?? 0)-\($0.day ?? 0)" }
             ?? b.estimatedManufactureDate.map { "\($0.formatted(date: .numeric, time: .omitted)) (estimated)" }
             ?? b.manufactureWeek.map { "week \($0.week), month \($0.month), year unknown" }
-        Swift.print("Manufactured: \(made ?? "-")")
+        print("Manufactured: \(made ?? "-")")
         if let l = b.lifetime {
-            Swift.print("Lifetime: \(l.totalOperatingHours.map(String.init) ?? "-") h operating, "
+            print("Lifetime: \(l.totalOperatingHours.map(String.init) ?? "-") h operating, "
                 + "temperature \(fmt(l.minimumTemperatureCelsius))–\(fmt(l.maximumTemperatureCelsius)) °C "
                 + "(avg \(fmt(l.averageTemperatureCelsius))), pack "
                 + "\(l.minimumPackVoltageMillivolts.map(String.init) ?? "-")–\(l.maximumPackVoltageMillivolts.map(String.init) ?? "-") mV")
         }
         let limit = ChargeLimitReader.read()
-        Swift.print("Charge limit: macOS \(limit.macOSLimitPercent.map { "\($0)%" } ?? "off")"
+        print("Charge limit: macOS \(limit.macOSLimitPercent.map { "\($0)%" } ?? "off")"
             + "  optimized \(limit.optimizedChargingEnabled ? (limit.optimizedChargingEngaged ? "on, engaged" : "on") : "off")"
             + "  third-party \(limit.thirdPartyLimiters.isEmpty ? "none" : limit.thirdPartyLimiters.joined(separator: ", "))"
             + "  BCLM \(limit.smcChargeLevelLimit.map(String.init) ?? "-")"
             + "  gauge calibrated \(b.cyclesSinceCalibration.map { "\($0) cycles ago" } ?? "-")")
         if let advice = limit.advice(cyclesSinceCalibration: b.cyclesSinceCalibration) {
-            Swift.print("Advice (\(advice.level)): \(advice.message)")
+            print("Advice (\(advice.level)): \(advice.message)")
         }
-        Swift.print("Failures: \(b.failures.messages.isEmpty ? "none" : b.failures.messages.joined(separator: ", "))")
+        print("Failures: \(b.failures.messages.isEmpty ? "none" : b.failures.messages.joined(separator: ", "))")
     }
 
     private static func fmt(_ value: Double?) -> String {

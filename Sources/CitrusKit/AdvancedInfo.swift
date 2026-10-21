@@ -145,6 +145,8 @@ public enum AdvancedInfo {
             InfoNode("Model number", info.modelNumber, path: "Mac"),
             InfoNode("Chip", info.chip, path: "Mac"),
             InfoNode("Serial number", info.serialNumber, path: "Mac"),
+            InfoNode("Manufactured", info.manufactureDate.flatMap { Calendar.current.date(from: $0) }?
+                .formatted(date: .abbreviated, time: .omitted), path: "Mac"),
             InfoNode("macOS", info.osVersion, path: "Mac"),
             InfoNode("Booted", info.bootDate?.formatted(date: .abbreviated, time: .shortened), path: "Mac"),
             InfoNode("Time since boot", DurationFormat.readable(Int(uptime / 60)), path: "Mac"),

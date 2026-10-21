@@ -10,6 +10,7 @@ struct ContentView: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var iosDevices: IOSDeviceMonitor
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -47,6 +48,13 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
+            detail
+        }
+        .onOpenURL { handle($0, openWindow: openWindow) }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
             switch navigator.selection {
             case .thisMac, nil:
                 MacDetailView()
@@ -55,6 +63,14 @@ struct ContentView: View {
             case .history:
                 HistoryView()
             }
+    }
+
+    /// citrusbattery:// links (see CitrusURL).
+    func handle(_ url: URL, openWindow: OpenWindowAction) {
+        switch CitrusURL.route(url) {
+        case let .select(item): navigator.selection = item
+        case let .advanced(target): openWindow(id: "advanced", value: target)
+        case nil: break
         }
     }
 

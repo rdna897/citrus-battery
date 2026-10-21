@@ -71,4 +71,35 @@ public enum BatteryOrigin {
         else { return nil }
         return ManufactureWeek(week: week, month: month)
     }
+
+    // MARK: Mac serial date code
+
+    private static let yearCodes = Array("CDFGHJKLMNPQRSTVWXYZ")
+    private static let weekCodes = Array("123456789CDFGHJKLMNPQRTVWXY")
+
+    /// Intel Macs from 2020 on still used dated 12-character serials; their year
+    /// codes repeat the 2010s letters a decade later.
+    static let modelsFrom2020s: Set<String> = [
+        "MacBookAir9,1", "MacBookPro16,2", "MacBookPro16,3", "iMac20,1", "iMac20,2",
+    ]
+
+    /// Manufacture date (Monday of the week) from a classic 11/12-character Mac
+    /// serial number: position 4 is the year and half-year, position 5 the week
+    /// within that half. Apple silicon serials are random and carry no date.
+    public static func macManufactureDate(serial: String, modelIdentifier: String) -> DateComponents? {
+        let characters = Array(serial.uppercased())
+        guard characters.count == 11 || characters.count == 12 else { return nil }
+        let yearIndex = characters.count == 12 ? 3 : 2
+        guard let i = yearCodes.firstIndex(of: characters[yearIndex]),
+              let j = weekCodes.firstIndex(of: characters[yearIndex + 1])
+        else { return nil }
+        let base = modelsFrom2020s.contains(modelIdentifier) ? 2029 : 2019
+        let year = base - (19 - i) / 2
+        let week = j + (i % 2 == 0 ? 1 : 27)
+        var iso = Calendar(identifier: .iso8601)
+        iso.timeZone = TimeZone(identifier: "UTC")!
+        guard let monday = iso.date(from: DateComponents(weekday: 2, weekOfYear: week, yearForWeekOfYear: year))
+        else { return nil }
+        return iso.dateComponents([.year, .month, .day], from: monday)
+    }
 }

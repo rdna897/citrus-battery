@@ -72,6 +72,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Citrus Battery finds iPhones and iPads on your network to read their battery when they're connected over WiFi.</string>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>org.citrusbattery.CitrusBattery</string>
+        <key>CFBundleURLSchemes</key><array><string>citrusbattery</string></array>
+    </dict></array>
     <key>NSBonjourServices</key>
     <array><string>_apple-mobdev2._tcp</string></array>
     <key>NSHumanReadableCopyright</key><string>Free software under the GNU GPL v3.</string>

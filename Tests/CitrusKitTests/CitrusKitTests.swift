@@ -590,3 +590,21 @@ struct FakeSMC: SMCReading {
         #expect(AdvancedInfo.usbSpeed(9).hasPrefix("Unknown"))
     }
 }
+
+@Suite struct MacSerialDateTests {
+    @Test func classicSerials() {
+        // Position 4 'F' = 2011 first half, position 5 '3' = week 3 → Monday 17 Jan 2011.
+        #expect(BatteryOrigin.macManufactureDate(serial: "C02F3ABCDH2G", modelIdentifier: "MacBookPro8,1")
+            == DateComponents(year: 2011, month: 1, day: 17))
+        // 'G' = 2011 second half, week code '1' → week 27 → 4 Jul 2011.
+        #expect(BatteryOrigin.macManufactureDate(serial: "C02G1ABCDH2G", modelIdentifier: "MacBookPro8,1")
+            == DateComponents(year: 2011, month: 7, day: 4))
+        // Same letters a decade later for 2020-era Intel models.
+        #expect(BatteryOrigin.macManufactureDate(serial: "C02F3ABCDH2G", modelIdentifier: "MacBookAir9,1")
+            == DateComponents(year: 2021, month: 1, day: 18))
+    }
+
+    @Test func randomSerialsHaveNoDate() {
+        #expect(BatteryOrigin.macManufactureDate(serial: "HKHF74H9DD", modelIdentifier: "Mac16,12") == nil)
+    }
+}
