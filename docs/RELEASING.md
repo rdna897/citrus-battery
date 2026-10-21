@@ -38,6 +38,15 @@ architecture, and rejects remaining external Homebrew links. The app declares
 the highest minimum macOS version required by its executable and bundled
 libraries. Building on a newer Mac can produce a higher minimum version.
 
+Packaging also runs the extracted app through normal GUI startup. It must finish
+reading notification settings and open a visible application window, then exit
+cleanly. This check exercises code that the command-line diagnostics do not run.
+To run it separately on a built app:
+
+```bash
+python3 scripts/test-app-launch.py "dist/Citrus Battery.app"
+```
+
 The archives in `dist/` contain the app and installation instructions, matching
 source code and dependency sources, licenses, build metadata, and SHA-256 files.
 Upstream source downloads are checked against the hashes in Homebrew's SBOMs.
@@ -50,8 +59,8 @@ on macOS 15 runners. Ordinary pushes and pull requests only produce workflow
 artifacts. A version tag publishes a GitHub Release after **both** builds pass:
 
 ```bash
-git tag -a v1.0 -m "Citrus Battery 1.0"
-git push origin v1.0
+git tag -a v1.0.1 -m "Citrus Battery 1.0.1"
+git push origin v1.0.1
 ```
 
 The workflow uses GitHub's built-in token, with write access only in the release

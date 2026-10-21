@@ -9,6 +9,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyDockIconPreference()
+        if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                guard NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal }) else {
+                    FileHandle.standardError.write(Data("No visible application window after launch\n".utf8))
+                    exit(1)
+                }
+                print("Citrus GUI launch check passed")
+                NSApp.terminate(nil)
+            }
+        }
         if ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "settings" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 NSApp.activate(ignoringOtherApps: true)

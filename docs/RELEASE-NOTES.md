@@ -1,5 +1,10 @@
-Citrus Battery 1.0 is a free, open source battery monitor for macOS, iPhone and iPad.
+Citrus Battery 1.0.1 is a free, open source battery monitor for macOS, iPhone and iPad.
 Please report problems through GitHub Issues.
+
+## Fixed in 1.0.1
+
+- Fixed a crash during launch while reading notification settings.
+- Fixed the same threading issue when requesting notification permission.
 
 ## Downloads
 

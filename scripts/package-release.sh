@@ -44,6 +44,7 @@ EXTRACTED_APP="$WORK/unpacked/$NAME/Citrus Battery.app"
 codesign --verify --deep --strict "$EXTRACTED_APP"
 "$EXTRACTED_APP/Contents/MacOS/CitrusBattery" --dump > "$WORK/launch.txt"
 test -s "$WORK/launch.txt"
+python3 scripts/test-app-launch.py "$EXTRACTED_APP"
 
 # Include our exact revision and the matching source archives for bundled
 # libraries, together with their Homebrew build recipes and license notices.

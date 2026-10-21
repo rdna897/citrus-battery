@@ -56,16 +56,22 @@ final class Notifier: NSObject, ObservableObject {
     var isAvailable: Bool { center != nil }
 
     func refreshAuthorization() {
-        center?.getNotificationSettings { settings in
-            let status = settings.authorizationStatus
-            Task { @MainActor [weak self] in self?.authorization = status }
+        guard let center else { return }
+        Task { @MainActor [weak self] in
+            let settings = await center.notificationSettings()
+            self?.authorization = settings.authorizationStatus
+            if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
+                print("Citrus notification settings check passed")
+            }
         }
     }
 
     /// Asks for permission the first time an alert is enabled.
     func requestAuthorization() {
-        center?.requestAuthorization(options: [.alert, .sound]) { _, _ in
-            Task { @MainActor [weak self] in self?.refreshAuthorization() }
+        guard let center else { return }
+        Task { @MainActor [weak self] in
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            self?.refreshAuthorization()
         }
     }
 
