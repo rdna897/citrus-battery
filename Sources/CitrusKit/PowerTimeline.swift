@@ -109,9 +109,16 @@ public struct PowerPoint: Sendable, Equatable, Identifiable {
     /// Points in the same segment are joined; a new segment starts after a gap
     /// (the Mac was asleep or the app wasn't running).
     public var segment: Int
-    /// As `segment`, but charge carries on through sleep, so its line only
-    /// breaks where the app wasn't running.
-    public var chargeSegment: Int
+
+    public var id: Date { date }
+}
+
+/// One point of the charge level line.
+public struct ChargePoint: Sendable, Equatable, Identifiable {
+    public var date: Date
+    public var percent: Double
+    /// Points in the same segment are joined.
+    public var segment: Int
 
     public var id: Date { date }
 }
@@ -141,39 +148,63 @@ public enum PowerTimeline {
     }
 
     /// Saved minutes averaged into buckets across the domain, oldest first.
-    public static func points(_ minutes: [PowerMinute], in domain: ClosedRange<Date>,
-                              sleeps: [DateInterval] = []) -> [PowerPoint] {
+    public static func points(_ minutes: [PowerMinute], in domain: ClosedRange<Date>) -> [PowerPoint] {
         let bucket = bucket(span: domain.upperBound.timeIntervalSince(domain.lowerBound))
         let grouped = Dictionary(grouping: minutes.filter { domain.contains($0.start) }) {
             ($0.start.timeIntervalSince1970 / bucket).rounded(.down)
         }
         var points: [PowerPoint] = []
         var segment = 0
-        var chargeSegment = 0
         var previous: Double?
         for key in grouped.keys.sorted() {
             let group = grouped[key]!.sorted { $0.start < $1.start }
             // Weighted by minutes, so a partly covered bucket isn't skewed.
             let average = group.map(\.averageWatts).reduce(0, +) / Double(group.count)
-            if let previous, key - previous > 1 {
-                segment += 1
-                // The buckets on either side of the gap may hold readings from just before
-                // sleep and just after waking, so the sleep need only reach into them.
-                let asleep = sleeps.contains {
-                    $0.start.timeIntervalSince1970 <= (previous + 1) * bucket
-                        && $0.end.timeIntervalSince1970 >= key * bucket
-                }
-                if !asleep { chargeSegment += 1 }
-            }
+            if let previous, key - previous > 1 { segment += 1 }
             previous = key
             points.append(PowerPoint(
                 date: Date(timeIntervalSince1970: key * bucket + bucket / 2),
                 averageWatts: average,
                 peakWatts: group.map(\.peakWatts).max() ?? average,
                 chargePercent: group.last { $0.chargePercent != nil }?.chargePercent,
-                segment: segment, chargeSegment: chargeSegment))
+                segment: segment))
         }
         return points
+    }
+
+    /// The charge level across the domain. Charge carries on through sleep, so
+    /// unlike power the line joins across a sleep, breaking only where the app
+    /// wasn't running. When the domain starts during a sleep, the line starts at
+    /// the edge, between the readings either side of it, as in a longer view.
+    public static func chargeLine(_ minutes: [PowerMinute], in domain: ClosedRange<Date>,
+                                  sleeps: [DateInterval]) -> [ChargePoint] {
+        let half = bucket(span: domain.upperBound.timeIntervalSince(domain.lowerBound)) / 2
+        // Whether a sleep spans a gap. Readings stop a little before sleep and resume a
+        // little after waking, so it need only come within a couple of minutes of them.
+        func asleep(from: Date, to: Date) -> Bool {
+            sleeps.contains { $0.start <= from.addingTimeInterval(120) && $0.end >= to.addingTimeInterval(-120) }
+        }
+        var line: [ChargePoint] = []
+        var segment = 0
+        var lastEnd: Date?
+        for point in points(minutes, in: domain) {
+            guard let percent = point.chargePercent.map(Double.init) else { continue }
+            let start = point.date.addingTimeInterval(-half)
+            if let lastEnd {
+                if start > lastEnd, !asleep(from: lastEnd, to: start) { segment += 1 }
+            } else if let before = minutes.filter({ $0.start < domain.lowerBound && $0.chargePercent != nil })
+                        .max(by: { $0.start < $1.start }),
+                      let charge = before.chargePercent,
+                      asleep(from: before.start.addingTimeInterval(60), to: start) {
+                let from = before.start.addingTimeInterval(30)
+                let share = domain.lowerBound.timeIntervalSince(from) / point.date.timeIntervalSince(from)
+                line.append(ChargePoint(date: domain.lowerBound,
+                                        percent: Double(charge) + (percent - Double(charge)) * share, segment: 0))
+            }
+            line.append(ChargePoint(date: point.date, percent: percent, segment: segment))
+            lastEnd = point.date.addingTimeInterval(half)
+        }
+        return line
     }
 
     /// Spacing between time axis ticks: the shortest that gives at most eight.

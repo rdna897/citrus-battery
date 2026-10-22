@@ -979,17 +979,35 @@ struct FakeSMC: SMCReading {
         #expect(points.count == 24)
         #expect(points.first?.segment == 0)
         #expect(points.last?.segment == 1)
-        #expect(points.last?.chargeSegment == 1)
         #expect(points.last?.averageWatts == 12)
         #expect(points.last?.peakWatts == 14)
         #expect(points.last?.chargePercent == 60)
         // Readings outside the domain are left out.
         #expect(PowerTimeline.points(minutes, in: now.addingTimeInterval(-3600)...now).count == 60)
-        // Asleep through the gap: the power line breaks but the charge line carries on.
+    }
+
+    @Test func joinsTheChargeLineAcrossSleep() {
+        // An hour at 80%, asleep for two hours with a brief wake, then an hour at 60%.
+        let minutes = (0..<60).map { Self.minute($0) } + [Self.minute(120, charge: 70)]
+            + (180..<240).map { Self.minute($0, charge: 60) }
         let sleep = DateInterval(start: Self.start + 59.5 * 60, end: Self.start + 180.5 * 60)
-        let joined = PowerTimeline.points(minutes, in: day, sleeps: [sleep])
-        #expect(joined.last?.segment == 1)
-        #expect(joined.last?.chargeSegment == 0)
+        let now = Self.start + 240 * 60
+        let day = now.addingTimeInterval(-86_400)...now
+        // Without the sleep, the line breaks at each gap.
+        #expect(Set(PowerTimeline.chargeLine(minutes, in: day, sleeps: []).map(\.segment)) == [0, 1, 2])
+        let joined = PowerTimeline.chargeLine(minutes, in: day, sleeps: [sleep])
+        #expect(joined.allSatisfy { $0.segment == 0 })
+        #expect(joined.first?.percent == 80)
+
+        // Starting during the sleep, the line starts at the edge: halfway between the reading
+        // just before sleep (59:30) and the brief wake (2:00:30), so 75%.
+        let edge = Self.start + 90 * 60
+        let trimmed = PowerTimeline.chargeLine(minutes, in: edge...(edge + 3600), sleeps: [sleep])
+        #expect(trimmed.first?.date == edge)
+        #expect(trimmed.first?.percent == 75)
+        #expect(trimmed.allSatisfy { $0.segment == 0 })
+        // Starting while the app wasn't running, it doesn't.
+        #expect(PowerTimeline.chargeLine(minutes, in: edge...(edge + 3600), sleeps: []).first?.percent == 70)
     }
 
     @Test func trimsTheDomainToWhereReadingsStart() {

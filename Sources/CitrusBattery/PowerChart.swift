@@ -63,14 +63,15 @@ struct PowerChart: View {
         let domain = PowerTimeline.domain(period: period, minutes: minutes, sleeps: sleeps, now: now)
         let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
         let sleeps = PowerTimeline.sleeps(sleeps, in: domain)
-        let points = PowerTimeline.points(minutes, in: domain, sleeps: sleeps)
+        let points = PowerTimeline.points(minutes, in: domain)
+        let charge = PowerTimeline.chargeLine(minutes, in: domain, sleeps: self.sleeps)
         let wakes = PowerTimeline.briefWakes(minutes, sleeps: sleeps)
         // Wakes close enough to overlap share one mark. Over more than two days,
         // nightly marks would crowd the bands, so they're only counted.
         let wakeMarks = span <= 2 * 86_400 ? PowerTimeline.group(wakes, within: span * 0.015) : []
         let title = axisTitle(domain: domain, now: now)
         // With the charge strip, the time labels go once, under it.
-        let hasCharge = points.contains { $0.chargePercent != nil }
+        let hasCharge = !charge.isEmpty
         if points.isEmpty && sleeps.isEmpty {
             placeholder("No readings in the last \(period.label) yet. Citrus Battery records power "
                 + "while it's running and keeps 30 days.")
@@ -112,9 +113,9 @@ struct PowerChart: View {
             if hasCharge {
                 Chart {
                     sleepBands(sleeps, labelled: false, domain: domain)
-                    ForEach(points.filter { $0.chargePercent != nil }) { point in
-                        LineMark(x: .value("Time", point.date), y: .value("Charge", point.chargePercent ?? 0),
-                                 series: .value("Segment", point.chargeSegment))
+                    ForEach(charge) { point in
+                        LineMark(x: .value("Time", point.date), y: .value("Charge", point.percent),
+                                 series: .value("Segment", point.segment))
                             .foregroundStyle(.green)
                     }
                     if let selection {
