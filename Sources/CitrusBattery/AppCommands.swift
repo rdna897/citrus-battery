@@ -80,7 +80,9 @@ enum AboutCitrusBattery {
             credits.addAttribute(.link, value: URL(string: address)!, range: (text as NSString).range(of: label))
         }
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        // The build number matches the version (the updater compares it), so an
+        // empty value hides the repeated "(1.2)" after "Version 1.2".
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
     }
 }
 
