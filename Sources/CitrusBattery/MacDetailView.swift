@@ -3,9 +3,11 @@ import CitrusKit
 import SwiftUI
 
 struct MacDetailView: View {
+    @EnvironmentObject private var history: HistoryController
+
     var body: some View {
         ScrollView {
-            MacDetailContent()
+            MacDetailContent(trend: history.thisMacSerial.flatMap { history.trends[$0] })
         }
         .navigationTitle("This Mac")
         .toolbar { AdvancedViewerButton(target: AdvancedTarget.mac) }
@@ -14,6 +16,8 @@ struct MacDetailView: View {
 
 /// The detail cards, separate from the scroll view so they can also be rendered offscreen.
 struct MacDetailContent: View {
+    /// This Mac's health trend from its history, if any.
+    var trend: HealthTrend?
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
@@ -25,6 +29,11 @@ struct MacDetailContent: View {
             if let battery = monitor.battery {
                 batterySection(battery)
                 powerSection(battery)
+                if battery.isExternalPowerConnected, let adapter = battery.adapter {
+                    ChargerCard(adapter: adapter, inputWatts: chargerInputWatts(battery),
+                                advice: ChargerCheck.advice(battery: battery, inputWatts: chargerInputWatts(battery),
+                                                            systemWatts: monitor.displayedSystemWatts))
+                }
                 if !battery.failures.messages.isEmpty {
                     failuresSection(battery.failures)
                 }
@@ -82,6 +91,7 @@ struct MacDetailContent: View {
                     InfoRow(battery.isCharging ? "Time until full" : "Time until empty",
                             battery.timeRemainingMinutes.map(DurationFormat.readable))
                     InfoRow("Charge cycles", cyclesText(battery))
+                    InfoRow("Health trend", trend?.summary, hidesWhenEmpty: true)
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     if let limit = monitor.chargeLimit {
                         InfoRow("Charge Limit", chargeLimitText(limit), hidesWhenEmpty: true)
@@ -109,7 +119,6 @@ struct MacDetailContent: View {
                         InfoRow(batteryFlowTitle(battery), watts(battery.batteryPowerWatts.map(abs)))
                     }
                     InfoRow("From adapter", watts(monitor.power.adapterWatts))
-                    InfoRow("Charger", battery?.adapter.flatMap(adapterText), hidesWhenEmpty: true)
                     InfoRow("CPU temperature", monitor.power.cpuTemperatureCelsius.map(temperatureUnit.format(celsius:)))
                 }
                 if monitor.powerHistory.count > 1 {
@@ -206,10 +215,9 @@ struct MacDetailContent: View {
         (battery.batteryPowerWatts ?? 0) >= 0 ? "Charging with" : "Discharging with"
     }
 
-    private func adapterText(_ adapter: PowerAdapter) -> String? {
-        let text = [adapter.watts.flatMap { $0 > 0 ? "\($0) W" : nil }, adapter.name]
-            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
-        return text.isEmpty ? nil : text
+    /// The power controller's measurement, else the SMC's.
+    private func chargerInputWatts(_ battery: MacBatterySnapshot) -> Double? {
+        battery.chargerInputMilliwatts.map { Double($0) / 1000 } ?? monitor.power.adapterWatts
     }
 
     private func watts(_ value: Double?) -> String? {
@@ -313,6 +321,44 @@ struct LifetimeCard: View {
     }
 }
 
+/// The connected charger and what it means for charging; shared by the Mac and iPhone/iPad pages.
+struct ChargerCard: View {
+    let adapter: PowerAdapter
+    let inputWatts: Double?
+    let advice: [BatteryAdvice]
+
+    var body: some View {
+        Card(title: "Charger", systemImage: "powerplug.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                    InfoRow("Charger", adapter.name ?? (adapter.isWireless ? "Wireless charger" : "Unknown"))
+                    InfoRow("Made by", adapter.manufacturer, hidesWhenEmpty: true)
+                    InfoRow("Agreed power", agreedText)
+                    InfoRow("Charger offers", ChargerCheck.profilesText(adapter), hidesWhenEmpty: true)
+                    InfoRow("Drawing now", drawingText, hidesWhenEmpty: true)
+                }
+                ForEach(advice, id: \.message) { AdviceBox(advice: $0) }
+            }
+        }
+    }
+
+    /// "30 W (20 V × 1.49 A)".
+    private var agreedText: String? {
+        let watts = adapter.watts.flatMap { $0 > 0 ? "\($0) W" : nil }
+        let detail = ChargerCheck.agreedText(adapter)
+        guard let watts else { return detail }
+        return detail.map { "\(watts) (\($0))" } ?? watts
+    }
+
+    /// "28.2 W (94% of agreed)".
+    private var drawingText: String? {
+        guard let inputWatts, inputWatts > 0 else { return nil }
+        let text = String(format: "%.1f W", inputWatts)
+        guard let agreed = ChargerCheck.agreedWatts(adapter), agreed > 0 else { return text }
+        return "\(text) (\(Int((inputWatts / agreed * 100).rounded()))% of agreed)"
+    }
+}
+
 struct Card<Content: View>: View {
     let title: String
     let systemImage: String
@@ -331,7 +377,7 @@ struct Card<Content: View>: View {
 }
 
 struct AdviceBox: View {
-    let advice: ChargeLimitAdvice
+    let advice: BatteryAdvice
 
     var body: some View {
         Label {

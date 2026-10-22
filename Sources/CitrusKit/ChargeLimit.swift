@@ -36,8 +36,8 @@ public struct ChargeLimitStatus: Sendable, Equatable {
     }
 }
 
-/// Advice shown alongside a charge limit.
-public struct ChargeLimitAdvice: Sendable, Equatable {
+/// A short note or warning shown under a reading.
+public struct BatteryAdvice: Sendable, Equatable {
     public enum Level: Sendable { case info, caution }
     public var level: Level
     public var message: String
@@ -53,7 +53,7 @@ extension ChargeLimitStatus {
     ///
     /// - Parameter cyclesSinceCalibration: cycles since the gauge last updated its
     ///   capacity estimate (`CycleCount − LifetimeData.CycleCountLastQmax`).
-    public func advice(cyclesSinceCalibration: Int?) -> ChargeLimitAdvice? {
+    public func advice(cyclesSinceCalibration: Int?) -> BatteryAdvice? {
         if hasThirdPartyLimit {
             let who = thirdPartyLimiters.first.map { "\($0) is" } ?? "Another app is"
             var message = "\(who) limiting charging. Weeks below full can throw off the gauge, so maximum "
@@ -62,10 +62,10 @@ extension ChargeLimitStatus {
             if let cycles = cyclesSinceCalibration {
                 message += " The gauge last recalibrated \(cycles) cycle\(cycles == 1 ? "" : "s") ago."
             }
-            return ChargeLimitAdvice(level: .caution, message: message)
+            return BatteryAdvice(level: .caution, message: message)
         }
         if macOSLimitPercent != nil || optimizedChargingEngaged {
-            return ChargeLimitAdvice(
+            return BatteryAdvice(
                 level: .info,
                 message: "macOS occasionally charges to 100% to keep its estimates accurate, so this "
                     + "limit doesn't affect reported capacity."

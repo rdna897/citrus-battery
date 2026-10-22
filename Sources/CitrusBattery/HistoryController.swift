@@ -11,6 +11,8 @@ final class HistoryController: ObservableObject {
         didSet { reloadEntries() }
     }
     @Published private(set) var lastError: String?
+    /// Health trend per device serial.
+    @Published private(set) var trends: [String: HealthTrend] = [:]
 
     private let store: HistoryStore?
     private weak var monitor: BatteryMonitor?
@@ -176,6 +178,13 @@ final class HistoryController: ObservableObject {
     func reload() {
         guard let store else { return }
         perform { devices = try store.devices(defaultAutoRecord: autoRecordNewDevices) }
+        perform {
+            var trends: [String: HealthTrend] = [:]
+            for device in devices {
+                trends[device.serial] = HealthForecast.trend(entries: try store.entries(deviceSerial: device.serial))
+            }
+            self.trends = trends
+        }
         if selectedDeviceSerial == nil || !devices.contains(where: { $0.serial == selectedDeviceSerial }) {
             selectedDeviceSerial = devices.first(where: { $0.serial == thisMacSerial })?.serial ?? devices.first?.serial
         } else {

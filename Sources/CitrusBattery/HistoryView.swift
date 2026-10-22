@@ -28,6 +28,11 @@ struct HistoryView: View {
                 chart
                     .padding(16)
                     .frame(height: 180)
+                if let trend = selectedTrend {
+                    trendSummary(trend)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                }
                 Divider()
                 table
             }
@@ -95,6 +100,15 @@ struct HistoryView: View {
         history.devices.first { $0.serial == history.selectedDeviceSerial }
     }
 
+    private var selectedTrend: HealthTrend? {
+        history.selectedDeviceSerial.flatMap { history.trends[$0] }
+    }
+
+    private var selectedForecast: HealthForecast? {
+        if case let .forecast(forecast) = selectedTrend { return forecast }
+        return nil
+    }
+
     // MARK: Header
 
     private var header: some View {
@@ -153,14 +167,50 @@ struct HistoryView: View {
         }
         let low = max((points.map(\.health).min() ?? 80) - 5, 0)
         let high = max(points.map(\.health).max() ?? 100, 100) + 2
-        return Chart(points, id: \.date) { point in
-            // Straight segments: smoothing would invent changes between readings.
-            LineMark(x: .value("Date", point.date), y: .value("Health", point.health))
-            PointMark(x: .value("Date", point.date), y: .value("Health", point.health))
-                .symbolSize(18)
+        let trend = selectedForecast.map { forecast in
+            [forecast.firstDate, forecast.latestDate].map { (date: $0, health: forecast.health(at: $0) * 100) }
+        } ?? []
+        return Chart {
+            ForEach(points, id: \.date) { point in
+                // Straight segments: smoothing would invent changes between readings.
+                LineMark(x: .value("Date", point.date), y: .value("Health", point.health),
+                         series: .value("Series", "Readings"))
+                PointMark(x: .value("Date", point.date), y: .value("Health", point.health))
+                    .symbolSize(18)
+            }
+            ForEach(trend, id: \.date) { point in
+                LineMark(x: .value("Date", point.date), y: .value("Health", point.health),
+                         series: .value("Series", "Trend"))
+                    .foregroundStyle(.orange)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            }
         }
         .chartYScale(domain: low...high)
         .chartYAxisLabel("Health %")
+    }
+
+    private func trendSummary(_ trend: HealthTrend) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chart.line.downtrend.xyaxis")
+                .foregroundStyle(.orange)
+            Text(trend.summary)
+            if let forecast = selectedForecast {
+                Text(forecastDetail(forecast))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .font(.callout)
+        .help("A trend line through the last year of readings for the current battery. "
+            + "It's an estimate: the rate of loss usually changes as a battery ages.")
+    }
+
+    private func forecastDetail(_ forecast: HealthForecast) -> String {
+        var parts = ["\(forecast.readingDays) days of readings"]
+        if let cycles = forecast.cyclesPerMonth {
+            parts.append(String(format: "%.0f cycles a month", cycles))
+        }
+        return "(" + parts.joined(separator: ", ") + ")"
     }
 
     // MARK: Table

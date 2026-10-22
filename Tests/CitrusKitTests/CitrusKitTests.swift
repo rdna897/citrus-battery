@@ -706,3 +706,158 @@ struct FakeSMC: SMCReading {
         #expect(!Self.snapshot(reason: 2, charging: false).isChargingPausedBySettings)
     }
 }
+
+@Suite struct ChargerCheckTests {
+    /// `AdapterDetails` of Apple's 30W USB-C Power Adapter on an M4 MacBook Air.
+    nonisolated(unsafe) static let appleCharger: [String: Any] = [
+        "Watts": 30, "Name": "30W USB-C Power Adapter", "Description": "pd charger",
+        "Manufacturer": "Apple Inc.", "AdapterVoltage": 20000, "Current": 1490, "IsWireless": false,
+        "UsbHvcHvcIndex": 3,
+        "UsbHvcMenu": [
+            ["Index": 0, "MaxCurrent": 2960, "MaxVoltage": 5000],
+            ["Index": 1, "MaxCurrent": 2980, "MaxVoltage": 9000],
+            ["Index": 2, "MaxCurrent": 1990, "MaxVoltage": 15000],
+            ["Index": 3, "MaxCurrent": 1490, "MaxVoltage": 20000],
+        ],
+    ]
+
+    static func battery(adapter: [String: Any], charging: Bool = true, currentCapacity: Int = 2000,
+                        amperage: Int = 2000, powerIn: Int? = 28240) -> MacBatterySnapshot {
+        var registry = SnapshotTests.appleSilicon
+        registry["AdapterDetails"] = adapter
+        registry["IsCharging"] = charging
+        registry["InstantAmperage"] = amperage
+        registry["BatteryData"] = ["DesignCapacity": 4629, "FullChargeCapacity": 4556,
+                                   "RemainingCapacity": currentCapacity]
+        if let powerIn { registry["PowerTelemetryData"] = ["SystemPowerIn": powerIn] }
+        return MacBatterySnapshot(registry: registry, smc: nil, powerSource: nil)
+    }
+
+    @Test func readsUSBPowerDeliveryProfiles() throws {
+        let battery = Self.battery(adapter: Self.appleCharger)
+        let adapter = try #require(battery.adapter)
+        #expect(adapter.name == "30W USB-C Power Adapter")
+        #expect(adapter.manufacturer == "Apple Inc.")
+        #expect(adapter.profiles.count == 4)
+        #expect(adapter.activeProfile == PowerProfile(voltageMillivolts: 20000, maxCurrentMilliamps: 1490))
+        #expect(abs((adapter.maximumOfferedWatts ?? 0) - 29.85) < 0.01)
+        #expect(ChargerCheck.agreedText(adapter) == "20 V × 1.49 A")
+        #expect(ChargerCheck.profilesText(adapter) == "5 V 2.96 A · 9 V 2.98 A · 15 V 1.99 A · 20 V 1.49 A")
+        #expect(battery.chargerInputMilliwatts == 28240)
+    }
+
+    @Test func fullyLoadedChargerLimitsSpeedBelowEightyPercent() {
+        let low = Self.battery(adapter: Self.appleCharger, currentCapacity: 2000)
+        let advice = ChargerCheck.advice(battery: low, inputWatts: 28.2)
+        #expect(advice.count == 1)
+        #expect(advice.first?.level == .info)
+        #expect(advice.first?.message.contains("28 W of 30 W") == true)
+
+        // Charging tapers above 80%, so the charger isn't what limits it there.
+        let high = Self.battery(adapter: Self.appleCharger, currentCapacity: 4000)
+        #expect(ChargerCheck.advice(battery: high, inputWatts: 28.2).isEmpty)
+        // Plenty of headroom.
+        #expect(ChargerCheck.advice(battery: low, inputWatts: 15).isEmpty)
+    }
+
+    @Test func warnsWhenDrainingWhilePluggedIn() {
+        let battery = Self.battery(adapter: Self.appleCharger, charging: false, amperage: -900)
+        let advice = ChargerCheck.advice(battery: battery, inputWatts: 29, systemWatts: 40)
+        #expect(advice.first?.level == .caution)
+        #expect(advice.first?.message.contains("29 W in, 40 W used") == true)
+        // A limiter that switches the charger off on purpose isn't the charger's fault.
+        #expect(ChargerCheck.advice(battery: battery, inputWatts: 0).isEmpty)
+    }
+
+    @Test func flagsBasicUSBSupplies() {
+        let usb: [String: Any] = ["Watts": 5, "AdapterVoltage": 5000, "Current": 1000]
+        let advice = ChargerCheck.advice(battery: Self.battery(adapter: usb), inputWatts: 4.8)
+        #expect(advice.count == 1)
+        #expect(advice.first?.message.contains("basic 5 V USB supply (5.0 W)") == true)
+    }
+
+    @Test func nothingOnBattery() {
+        var battery = Self.battery(adapter: Self.appleCharger)
+        battery.isExternalPowerConnected = false
+        #expect(ChargerCheck.advice(battery: battery, inputWatts: 30).isEmpty)
+    }
+}
+
+@Suite struct HealthForecastTests {
+    static let start = ManufactureDateTests.utc.date(from: DateComponents(year: 2025, month: 1, day: 1, hour: 12))!
+
+    /// One reading a day losing `perYear` of design capacity, plus a ±1% wobble.
+    static func entries(days: Int, from health: Double = 1.0, perYear: Double, every step: Int = 1,
+                        batterySerial: String = "F8Y") -> [HistoryEntry] {
+        stride(from: 0, to: days, by: step).map { day in
+            let wobble = [0.0, 0.01, -0.01][day % 3]
+            let fraction = health + perYear * Double(day) / 365.25 + wobble
+            return HistoryEntry(date: start.addingTimeInterval(Double(day) * 86_400), deviceType: .mac,
+                                deviceSerial: "MAC1", deviceName: "MacBook Air", deviceModel: "Mac16,12",
+                                batterySerial: batterySerial, cycleCount: day / 2, designCapacity: 5000,
+                                fullChargeCapacity: Int(fraction * 5000))
+        }
+    }
+
+    static func forecast(_ entries: [HistoryEntry]) throws -> HealthForecast {
+        guard case let .forecast(forecast) = HealthForecast.trend(entries: entries, calendar: ManufactureDateTests.utc)
+        else { throw CancellationError() }
+        return forecast
+    }
+
+    @Test func fitsSteadyLossDespiteNoise() throws {
+        let forecast = try Self.forecast(Self.entries(days: 200, perYear: -0.05))
+        #expect(abs(forecast.changePerYear - -0.05) < 0.005)
+        #expect(forecast.readingDays == 200)
+        #expect(abs((forecast.cyclesPerMonth ?? 0) - 15.2) < 0.5)
+        // 1.0 − 0.05 × 199/365 ≈ 0.973 now; 0.173 to lose at 5%/year ≈ 3.5 years.
+        guard case let .reaches(date) = forecast.outlook else {
+            Issue.record("expected a date")
+            return
+        }
+        let years = date.timeIntervalSince(forecast.latestDate) / (365.25 * 86_400)
+        #expect(abs(years - 3.46) < 0.3)
+        #expect(HealthTrend.forecast(forecast).summary.hasPrefix("Losing 5.0% a year; 80% around"))
+    }
+
+    @Test func ignoresARecalibrationJump() throws {
+        var entries = Self.entries(days: 120, perYear: -0.04)
+        for index in 60..<64 { entries[index].fullChargeCapacity! -= 400 }
+        #expect(abs(try Self.forecast(entries).changePerYear - -0.04) < 0.01)
+    }
+
+    @Test func needsTwoMonthsOfHistory() {
+        #expect(HealthForecast.trend(entries: Self.entries(days: 30, perYear: -0.05),
+                                     calendar: ManufactureDateTests.utc)
+            == .collecting(days: 29, readingDays: 30))
+        #expect(HealthTrend.collecting(days: 29, readingDays: 30).summary == "Collecting history (29 of 60 days)")
+        // Long enough but too sparse.
+        #expect(HealthForecast.trend(entries: Self.entries(days: 90, perYear: -0.05, every: 30),
+                                     calendar: ManufactureDateTests.utc)
+            == .collecting(days: 60, readingDays: 3))
+        #expect(HealthForecast.trend(entries: [], calendar: ManufactureDateTests.utc) == nil)
+    }
+
+    @Test func stableAndBelowThreshold() throws {
+        #expect(try Self.forecast(Self.entries(days: 100, perYear: 0)).outlook == .stable)
+        let old = try Self.forecast(Self.entries(days: 100, from: 0.79, perYear: -0.03))
+        #expect(old.outlook == .belowThreshold)
+        #expect(HealthTrend.forecast(old).summary == "Losing 3.0% a year; already below 80%")
+        let slow = try Self.forecast(Self.entries(days: 100, from: 0.95, perYear: -0.01))
+        #expect(slow.outlook == .beyondHorizon)
+    }
+
+    @Test func onlyUsesTheCurrentBattery() throws {
+        // A worn battery was replaced: the old readings must not drag the new trend down.
+        let old = Self.entries(days: 100, from: 0.75, perYear: -0.1, batterySerial: "OLD")
+        let new = Self.entries(days: 100, from: 1.0, perYear: 0).map { entry in
+            var entry = entry
+            entry.date += 100 * 86_400
+            entry.batterySerial = "NEW"
+            return entry
+        }
+        let forecast = try Self.forecast(old + new)
+        #expect(forecast.outlook == .stable)
+        #expect(forecast.readingDays == 100)
+    }
+}

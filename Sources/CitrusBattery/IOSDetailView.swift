@@ -4,11 +4,13 @@ import SwiftUI
 struct IOSDetailView: View {
     let udid: String
     @EnvironmentObject private var devices: IOSDeviceMonitor
+    @EnvironmentObject private var history: HistoryController
 
     var body: some View {
         ScrollView {
             if let device = devices.device(udid: udid) {
-                IOSDetailContent(device: device)
+                IOSDetailContent(device: device,
+                                 trend: history.trends[device.snapshot?.serialNumber ?? device.udid])
             } else {
                 Text("This device is no longer connected.")
                     .foregroundStyle(.secondary)
@@ -31,6 +33,8 @@ struct IOSDetailView: View {
 
 struct IOSDetailContent: View {
     let device: TrackedDevice
+    /// The device's health trend from its history, if any.
+    var trend: HealthTrend?
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
 
@@ -47,6 +51,11 @@ struct IOSDetailContent: View {
             if let snapshot = device.snapshot {
                 if let battery = snapshot.battery {
                     batteryCard(battery)
+                    if battery.isExternalPowerConnected, let adapter = battery.adapter {
+                        let input = battery.chargerInputMilliwatts.map { Double($0) / 1000 }
+                        ChargerCard(adapter: adapter, inputWatts: input,
+                                    advice: ChargerCheck.advice(battery: battery, inputWatts: input))
+                    }
                     if let lifetime = battery.lifetime {
                         LifetimeCard(lifetime: lifetime, cyclesSinceCalibration: battery.cyclesSinceCalibration,
                                      target: device.udid)
@@ -123,7 +132,7 @@ struct IOSDetailContent: View {
                          tint: healthColour(battery.healthFraction))
                 Divider()
                 if battery.isChargingPausedBySettings {
-                    AdviceBox(advice: ChargeLimitAdvice(
+                    AdviceBox(advice: BatteryAdvice(
                         level: .info,
                         message: "Paused by Charge Limit or Optimized Battery Charging. iOS occasionally charges "
                             + "to 100% to keep its estimates accurate, so reported capacity isn't affected."))
@@ -134,12 +143,12 @@ struct IOSDetailContent: View {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     InfoRow("Status", status(battery))
                     InfoRow("Charge cycles", battery.cycleCount.map(String.init))
+                    InfoRow("Health trend", trend?.summary, hidesWhenEmpty: true)
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     InfoRow(battery.isCharging ? "Charging with" : "Discharging with",
                             // A zero reading means the current wasn't reported (common over WiFi).
                             battery.batteryPowerWatts.flatMap { abs($0) < 0.05 ? nil : String(format: "%.1f W", abs($0)) },
                             hidesWhenEmpty: true)
-                    InfoRow("Charger", battery.adapter?.watts.flatMap { $0 > 0 ? "\($0) W" : nil }, hidesWhenEmpty: true)
                 }
             }
         }

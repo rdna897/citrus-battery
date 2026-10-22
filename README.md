@@ -76,6 +76,10 @@ Click any screenshot to see it at full resolution.
   records or from its serial number, or is estimated from its operating hours.
 - Power use from the SMC: system usage, its 1-minute peak, adapter input, battery
   charge or discharge rate, CPU temperature, and a live power chart.
+- Charger check: the charger's name and maker, the power it agreed with the Mac, the
+  USB-C voltage and current options it offers, and how much it's supplying now. It says
+  when the charger is what limits charging speed, or can't keep up and the battery
+  drains while plugged in.
 - Charge limits: shows macOS's Charge Limit and Optimized Battery Charging, and spots
   third-party charge limiters (AlDente, Battery Toolkit, batt). Where a limit can make
   reported capacity read low, it says so.
@@ -90,6 +94,8 @@ Click any screenshot to see it at full resolution.
 
 **History**
 - Auto-Record saves each battery about once an hour when something changes.
+- Health forecast: a trend line through the last year of readings, showing how fast
+  the battery is losing capacity and roughly when it will reach 80%.
 - A health chart, a sortable table, JSON backup and restore, and import of
   coconutBattery backups (`.ccba`, which needs coconutBattery installed).
 

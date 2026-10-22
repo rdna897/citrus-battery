@@ -2,10 +2,52 @@ import Foundation
 
 /// Power adapter details from `AdapterDetails`.
 public struct PowerAdapter: Sendable, Equatable {
+    /// The power agreed with the charger (W).
     public var watts: Int?
     public var name: String?
+    /// Agreed voltage (mV).
     public var voltageMillivolts: Int?
+    /// Agreed maximum current (mA).
     public var currentMilliamps: Int?
+    public var manufacturer: String?
+    public var isWireless: Bool
+    /// What a USB Power Delivery charger offers, lowest voltage first.
+    public var profiles: [PowerProfile]
+    /// The offered profile in use, if known.
+    public var activeProfile: PowerProfile?
+
+    public init(watts: Int? = nil, name: String? = nil, voltageMillivolts: Int? = nil,
+                currentMilliamps: Int? = nil, manufacturer: String? = nil, isWireless: Bool = false,
+                profiles: [PowerProfile] = [], activeProfile: PowerProfile? = nil) {
+        self.watts = watts
+        self.name = name
+        self.voltageMillivolts = voltageMillivolts
+        self.currentMilliamps = currentMilliamps
+        self.manufacturer = manufacturer
+        self.isWireless = isWireless
+        self.profiles = profiles
+        self.activeProfile = activeProfile
+    }
+
+    /// The most power any offered profile can supply (W).
+    public var maximumOfferedWatts: Double? {
+        profiles.map(\.watts).max()
+    }
+}
+
+/// One voltage and current limit a USB Power Delivery charger offers.
+public struct PowerProfile: Sendable, Equatable {
+    public var voltageMillivolts: Int
+    public var maxCurrentMilliamps: Int
+
+    public init(voltageMillivolts: Int, maxCurrentMilliamps: Int) {
+        self.voltageMillivolts = voltageMillivolts
+        self.maxCurrentMilliamps = maxCurrentMilliamps
+    }
+
+    public var watts: Double {
+        Double(voltageMillivolts) * Double(maxCurrentMilliamps) / 1_000_000
+    }
 }
 
 /// macOS's own view of the battery, from the IOPS power-source API.
@@ -55,6 +97,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var timeToFullMinutes: Int?
 
     public var adapter: PowerAdapter?
+    /// Power arriving from the charger, as the power controller measures it (mW).
+    public var chargerInputMilliwatts: Int?
     public var serialNumber: String?
     public var gasGaugeName: String?
     /// Cell manufacturer, from the registry or decoded from the serial prefix.
@@ -206,12 +250,11 @@ extension MacBatterySnapshot {
         timeToFullMinutes = Self.minutes(r["AvgTimeToFull"])
 
         if let details = r["AdapterDetails"] as? [String: Any], !details.isEmpty {
-            adapter = PowerAdapter(
-                watts: Self.int(details["Watts"]),
-                name: details["Name"] as? String ?? details["Description"] as? String,
-                voltageMillivolts: Self.int(details["AdapterVoltage"]),
-                currentMilliamps: Self.int(details["Current"])
-            )
+            adapter = Self.adapter(details)
+        }
+        if isExternalPowerConnected,
+           let milliwatts = Self.int((r["PowerTelemetryData"] as? [String: Any])?["SystemPowerIn"]), milliwatts > 0 {
+            chargerInputMilliwatts = milliwatts
         }
 
         serialNumber = (r["Serial"] as? String) ?? (r["BatterySerialNumber"] as? String)
@@ -248,6 +291,30 @@ extension MacBatterySnapshot {
         // percentage is the figure the device itself shows.
         self.powerSource = powerSource ?? (topLevelIsPercent
             ? Self.int(r["CurrentCapacity"]).map { PowerSourceInfo(chargePercent: $0) } : nil)
+    }
+
+    /// Reads `AdapterDetails`. `UsbHvcMenu` lists the profiles a USB-PD charger
+    /// offers and `UsbHvcHvcIndex` names the one in use.
+    static func adapter(_ details: [String: Any]) -> PowerAdapter {
+        let menu = (details["UsbHvcMenu"] as? [[String: Any]] ?? []).compactMap { item
+            -> (index: Int?, profile: PowerProfile)? in
+            guard let volts = int(item["MaxVoltage"]), let amps = int(item["MaxCurrent"]), volts > 0, amps > 0
+            else { return nil }
+            return (int(item["Index"]), PowerProfile(voltageMillivolts: volts, maxCurrentMilliamps: amps))
+        }
+        let activeIndex = int(details["UsbHvcHvcIndex"])
+        let name = [details["Name"], details["Description"]].compactMap { $0 as? String }
+            .first { !$0.isEmpty }
+        return PowerAdapter(
+            watts: int(details["Watts"]),
+            name: name,
+            voltageMillivolts: int(details["AdapterVoltage"]),
+            currentMilliamps: int(details["Current"]),
+            manufacturer: (details["Manufacturer"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            isWireless: bool(details["IsWireless"]) ?? false,
+            profiles: menu.map(\.profile).sorted { $0.voltageMillivolts < $1.voltageMillivolts },
+            activeProfile: activeIndex.flatMap { index in menu.first { $0.index == index }?.profile }
+        )
     }
 
     /// Decodes the Smart Battery Data packed date: `(year − 1980) << 9 | month << 5 | day`.
