@@ -383,6 +383,10 @@ struct SleepCard: View {
                 if let advice = SleepDrain.advice(sessions) {
                     AdviceBox(advice: advice)
                 }
+                Text("Sleeps of \(Int(SleepSession.minimumDuration / 60)) minutes or more on battery are measured; "
+                    + "shorter ones are too brief for the battery gauge to show the loss.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

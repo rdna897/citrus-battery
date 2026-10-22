@@ -2,10 +2,13 @@ import AppKit
 import CitrusKit
 import Combine
 import Foundation
+import os
 
 /// Owns the history database: Auto-Record, manual saves, and the viewer's data.
 @MainActor
 final class HistoryController: ObservableObject {
+    private static let log = Logger(subsystem: "org.citrusbattery.CitrusBattery", category: "History")
+
     @Published private(set) var devices: [HistoryDevice] = []
     @Published private(set) var entries: [HistoryEntry] = []
     @Published var selectedDeviceSerial: String? {
@@ -154,16 +157,28 @@ final class HistoryController: ObservableObject {
         guard let sleep = sleepReading else { return }
         sleepReading = nil
         let wokeAt = Date()
+        guard wokeAt.timeIntervalSince(sleep.date) >= SleepSession.minimumDuration else { return }
         Task { [weak self] in
+            // The gauge refreshes about once a minute; allow for a slow first refresh.
             var after = MacBatteryReader.read()
-            for _ in 0..<24 where (after?.gaugeUpdated ?? wokeAt) < wokeAt {
+            for _ in 0..<60 where after == nil || (after?.gaugeUpdated ?? wokeAt) < wokeAt {
                 try? await Task.sleep(for: .seconds(5))
                 after = MacBatteryReader.read()
             }
-            guard let self, let store = self.store, let after, (after.gaugeUpdated ?? wokeAt) >= wokeAt,
-                  let session = SleepSession(before: sleep.battery, after: after,
-                                             sleptAt: sleep.date, wokeAt: wokeAt)
-            else { return }
+            let slept = "\(sleep.date.formatted(date: .omitted, time: .standard))–"
+                + wokeAt.formatted(date: .omitted, time: .standard)
+            guard let after, (after.gaugeUpdated ?? wokeAt) >= wokeAt else {
+                Self.log.notice("Sleep \(slept, privacy: .public) not measured: no fresh reading after waking")
+                return
+            }
+            guard let self, let store = self.store else { return }
+            guard let session = SleepSession(before: sleep.battery, after: after,
+                                             sleptAt: sleep.date, wokeAt: wokeAt) else {
+                let detail = "power \(sleep.battery.isExternalPowerConnected)/\(after.isExternalPowerConnected), "
+                    + "capacity \(sleep.battery.currentCapacity ?? -1)→\(after.currentCapacity ?? -1)"
+                Self.log.notice("Sleep \(slept, privacy: .public) not measured: \(detail, privacy: .public)")
+                return
+            }
             self.perform { try store.insert(session) }
             self.reloadSleepSessions()
         }

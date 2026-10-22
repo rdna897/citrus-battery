@@ -923,6 +923,17 @@ struct FakeSMC: SMCReading {
                              sleptAt: Self.night, wokeAt: Self.night + 600) == nil)
     }
 
+    @Test func treatsASmallGaugeRiseAsNoLoss() throws {
+        // The gauge revised the charge up by 20 mAh (0.4%) after heavy use: no loss.
+        let rested = try #require(SleepSession(before: Self.battery(4000), after: Self.battery(4020),
+                                               sleptAt: Self.night, wokeAt: Self.night + 1800))
+        #expect(rested.lossFraction == 0)
+        #expect(SleepDrain.summary(rested) == "Lost less than 1% in 30 min (0.0% an hour)")
+        // Over 1% (45 mAh) means it charged.
+        #expect(SleepSession(before: Self.battery(4000), after: Self.battery(4050),
+                             sleptAt: Self.night, wokeAt: Self.night + 1800) == nil)
+    }
+
     @Test func flagsHeavyDrainOnLongSleeps() {
         let heavy = SleepSession(start: Self.night, end: Self.night + 5 * 3600,
                                  startCapacity: 4000, endCapacity: 3550, fullChargeCapacity: 4500)

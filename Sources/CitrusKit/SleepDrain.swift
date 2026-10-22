@@ -34,15 +34,21 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
     /// Shorter sleeps are skipped: the gauge's resolution swamps the loss.
     public static let minimumDuration: TimeInterval = 30 * 60
 
+    /// The gauge can revise the remaining charge up a little once the battery
+    /// rests after heavy use; rises up to this share of a full charge count as no loss.
+    public static let restingRise = 0.01
+
     /// A session from readings taken just before sleep and after waking, or `nil`
     /// when it can't be measured: too short, on power at either end, or charged in between.
     public init?(before: MacBatterySnapshot, after: MacBatterySnapshot, sleptAt: Date, wokeAt: Date) {
         guard wokeAt.timeIntervalSince(sleptAt) >= Self.minimumDuration,
               !before.isExternalPowerConnected, !after.isExternalPowerConnected,
-              let start = before.currentCapacity, let end = after.currentCapacity, end <= start,
-              let full = after.fullChargeCapacity ?? before.fullChargeCapacity, full > 0
+              let start = before.currentCapacity, let end = after.currentCapacity,
+              let full = after.fullChargeCapacity ?? before.fullChargeCapacity, full > 0,
+              Double(end - start) <= Double(full) * Self.restingRise
         else { return nil }
-        self.init(start: sleptAt, end: wokeAt, startCapacity: start, endCapacity: end, fullChargeCapacity: full)
+        self.init(start: sleptAt, end: wokeAt, startCapacity: start, endCapacity: min(end, start),
+                  fullChargeCapacity: full)
     }
 }
 
@@ -56,7 +62,7 @@ public enum SleepDrain {
     /// "Lost 3% in 8 h 12 min (0.4% an hour)".
     public static func summary(_ session: SleepSession) -> String {
         let minutes = Int((session.hours * 60).rounded())
-        let lost = String(format: "%.0f%%", session.lossFraction * 100)
+        let lost = session.lossFraction < 0.005 ? "less than 1%" : String(format: "%.0f%%", session.lossFraction * 100)
         let rate = String(format: "%.1f%%", session.lossPerHour * 100)
         return "Lost \(lost) in \(DurationFormat.readable(minutes)) (\(rate) an hour)"
     }
