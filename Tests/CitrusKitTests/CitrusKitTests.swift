@@ -992,6 +992,18 @@ struct FakeSMC: SMCReading {
         #expect(clipped == [DateInterval(start: Self.start, end: Self.start + 600)])
     }
 
+    @Test func findsBriefWakesDuringSleep() {
+        // Asleep from 9:00:20 to 10:00:20. The minutes at 9:00 and 10:00 hold readings
+        // from before sleep and after waking, so only 9:20–9:21 and 9:45 count.
+        let sleep = DateInterval(start: Self.start + 20, end: Self.start + 3620)
+        let minutes = [0, 20, 21, 45, 60].map { Self.minute($0, watts: Double($0) / 10) }
+        let wakes = PowerTimeline.briefWakes(minutes, sleeps: [sleep])
+        #expect(wakes == [BriefWake(start: Self.start + 1200, end: Self.start + 1320, peakWatts: 4.1),
+                          BriefWake(start: Self.start + 2700, end: Self.start + 2760, peakWatts: 6.5)])
+        #expect(wakes.first?.middle == Self.start + 1260)
+        #expect(PowerTimeline.briefWakes(minutes, sleeps: []).isEmpty)
+    }
+
     @Test func storeRoundTripsAndPrunes() throws {
         let store = try HistoryStore(url: nil)
         try store.insert(Self.minute(0))

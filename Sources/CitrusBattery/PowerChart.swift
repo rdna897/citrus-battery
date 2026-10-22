@@ -62,6 +62,9 @@ struct PowerChart: View {
     private func historyCharts(now: Date) -> some View {
         let points = PowerTimeline.points(minutes, period: period, now: now)
         let sleeps = PowerTimeline.sleeps(sleeps, period: period, now: now)
+        let wakes = PowerTimeline.briefWakes(minutes, sleeps: sleeps)
+        // Over a week or a month, nightly wakes would crowd the bands into stripes.
+        let markedWakes = period == .hour || period == .day ? wakes : []
         let domain = now.addingTimeInterval(-period.duration)...now
         // With the charge strip, the time labels go once, under it.
         let hasCharge = points.contains { $0.chargePercent != nil }
@@ -69,9 +72,16 @@ struct PowerChart: View {
             placeholder("No readings in the last \(period.label) yet. Citrus Battery records power "
                 + "while it's running and keeps 30 days.")
         } else {
-            readout(points: points, sleeps: sleeps)
+            readout(points: points, sleeps: sleeps, wakes: wakes, marked: markedWakes)
             Chart {
                 sleepBands(sleeps, labelled: true, domain: domain)
+                ForEach(markedWakes) { wake in
+                    PointMark(x: .value("Woke briefly", wake.middle), y: .value("Watts", 0))
+                        .symbol {
+                            Circle().fill(Self.sleepColour).frame(width: 7, height: 7)
+                                .overlay(Circle().stroke(.background, lineWidth: 1.5))
+                        }
+                }
                 ForEach(points) { point in
                     AreaMark(x: .value("Time", point.date), y: .value("Watts", point.averageWatts),
                              series: .value("Segment", point.segment), stacking: .unstacked)
@@ -118,7 +128,7 @@ struct PowerChart: View {
                 .selectable($selection)
                 .frame(height: 95)
             }
-            legend(hasSleep: !sleeps.isEmpty)
+            legend(hasSleep: !sleeps.isEmpty, hasWakes: !markedWakes.isEmpty)
         }
     }
 
@@ -183,10 +193,15 @@ struct PowerChart: View {
     }
 
     /// The hovered moment, or a summary of the period.
-    private func readout(points: [PowerPoint], sleeps: [DateInterval]) -> some View {
+    private func readout(points: [PowerPoint], sleeps: [DateInterval], wakes: [BriefWake], marked: [BriefWake]) -> some View {
         let text: String
-        if let selection, let sleep = sleeps.first(where: { $0.contains(selection) }) {
+        if let selection, let wake = nearest(to: selection, in: marked) {
+            text = "Woke briefly at \(timeText(wake.start)) with the screen off · "
+                + String(format: "%.1f W peak", wake.peakWatts)
+        } else if let selection, let sleep = sleeps.first(where: { $0.contains(selection) }) {
+            let woke = wakes.filter { sleep.contains($0.middle) }.count
             text = "Asleep \(range(sleep)) (\(DurationFormat.readable(Int(sleep.duration / 60))))"
+                + (woke > 0 ? ", woke briefly \(timesText(woke))" : "")
         } else if let selection, let point = nearest(to: selection, in: points) {
             var parts = [timeText(point.date),
                          String(format: "%.1f W average, %.1f W peak", point.averageWatts, point.peakWatts)]
@@ -200,7 +215,8 @@ struct PowerChart: View {
             if slept >= 60 {
                 // Whole hours are precise enough once sleeps add up.
                 let minutes = slept >= 10 * 3600 ? Int((slept / 3600).rounded()) * 60 : Int(slept / 60)
-                parts.append("asleep \(DurationFormat.readable(minutes))")
+                parts.append("asleep \(DurationFormat.readable(minutes))"
+                    + (wakes.isEmpty ? "" : " (woke briefly \(timesText(wakes.count)))"))
             }
             text = parts.joined(separator: " · ")
         }
@@ -209,7 +225,7 @@ struct PowerChart: View {
             .foregroundStyle(.secondary)
     }
 
-    private func legend(hasSleep: Bool) -> some View {
+    private func legend(hasSleep: Bool, hasWakes: Bool) -> some View {
         HStack(spacing: 14) {
             legendItem(Color.accentColor, "System power")
             if minutes.contains(where: { $0.chargePercent != nil }) {
@@ -221,6 +237,13 @@ struct PowerChart: View {
                         .fill(Self.sleepColour.opacity(0.25))
                         .frame(width: 12, height: 10)
                     Text("Mac asleep")
+                }
+            }
+            if hasWakes {
+                HStack(spacing: 4) {
+                    Circle().fill(Self.sleepColour).frame(width: 7, height: 7)
+                        .frame(width: 12, height: 10)
+                    Text("Brief wake")
                 }
             }
         }
@@ -247,6 +270,17 @@ struct PowerChart: View {
               abs(point.date.timeIntervalSince(date)) <= period.bucket
         else { return nil }
         return point
+    }
+
+    /// The closest wake within a few pixels of the pointer.
+    private func nearest(to date: Date, in wakes: [BriefWake]) -> BriefWake? {
+        let reach = max(period.bucket, period.duration * 0.01)
+        return wakes.filter { abs($0.middle.timeIntervalSince(date)) <= reach }
+            .min { abs($0.middle.timeIntervalSince(date)) < abs($1.middle.timeIntervalSince(date)) }
+    }
+
+    private func timesText(_ count: Int) -> String {
+        count == 1 ? "once" : count == 2 ? "twice" : "\(count) times"
     }
 
     private func timeText(_ date: Date) -> String {

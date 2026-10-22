@@ -186,6 +186,35 @@ public enum PowerTimeline {
         let window = DateInterval(start: now.addingTimeInterval(-period.duration), end: now)
         return sleeps.compactMap { $0.intersection(with: window) }.filter { $0.duration > 0 }
     }
+
+    /// Times macOS woke the Mac briefly with the screen off (for network upkeep,
+    /// Find My or maintenance) during a sleep: saved minutes that lie wholly
+    /// inside a sleep, with back-to-back minutes joined.
+    public static func briefWakes(_ minutes: [PowerMinute], sleeps: [DateInterval]) -> [BriefWake] {
+        var wakes: [BriefWake] = []
+        for minute in minutes.sorted(by: { $0.start < $1.start }) {
+            let end = minute.start.addingTimeInterval(60)
+            guard sleeps.contains(where: { $0.start <= minute.start && end <= $0.end }) else { continue }
+            if let last = wakes.last, last.end >= minute.start {
+                wakes[wakes.count - 1].end = end
+                wakes[wakes.count - 1].peakWatts = max(last.peakWatts, minute.peakWatts)
+            } else {
+                wakes.append(BriefWake(start: minute.start, end: end, peakWatts: minute.peakWatts))
+            }
+        }
+        return wakes
+    }
+}
+
+/// A brief wake during sleep. Times are to the minute: the wake itself
+/// usually lasts only seconds.
+public struct BriefWake: Sendable, Equatable, Identifiable {
+    public var start: Date
+    public var end: Date
+    public var peakWatts: Double
+
+    public var id: Date { start }
+    public var middle: Date { start.addingTimeInterval(end.timeIntervalSince(start) / 2) }
 }
 
 /// How power is flowing through the battery, for "Charging with 12.3 W"-style rows.

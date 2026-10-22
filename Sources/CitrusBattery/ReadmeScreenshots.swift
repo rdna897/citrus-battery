@@ -87,6 +87,13 @@ enum ReadmeScreenshots {
                 let wake = calendar.date(bySettingHour: 7, minute: 0, second: 0,
                                          of: hour >= 23 ? minute.addingTimeInterval(86_400) : minute)!
                 try store.insertSleepPeriod(DateInterval(start: minute, end: min(wake, now)))
+                // Brief wakes with the screen off, every hour or so.
+                var dark = minute.addingTimeInterval(2400)
+                while dark.addingTimeInterval(60) < min(wake, now) {
+                    try store.insert(PowerMinute(start: dark, averageWatts: 0.6, peakWatts: 1.2,
+                                                 chargePercent: Int(charge), onAdapter: false))
+                    dark.addTimeInterval(3600 + Double(Int(dark.timeIntervalSince1970) % 1200))
+                }
                 charge -= wake.timeIntervalSince(minute) / 3600 * 0.3
                 minute = wake
                 continue
