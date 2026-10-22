@@ -77,6 +77,17 @@ public enum PowerPeriod: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// Title for the chart's time axis.
+    public var axisTitle: String {
+        switch self {
+        case .live: "Last 2 minutes"
+        case .hour: "Last hour"
+        case .day: "Last 24 hours"
+        case .week: "Last 7 days"
+        case .month: "Last 30 days"
+        }
+    }
+
     public var duration: TimeInterval {
         switch self {
         case .live: 120
@@ -140,6 +151,34 @@ public enum PowerTimeline {
                 segment: segment))
         }
         return points
+    }
+
+    /// Round local times across the domain, leaving out any too close to the
+    /// edges for their centred label to fit.
+    public static func ticks(period: PowerPeriod, domain: ClosedRange<Date>,
+                      calendar: Calendar = .current) -> [Date] {
+        let step: TimeInterval = switch period {
+        case .live: 30
+        case .hour: 10 * 60
+        case .day: 3 * 3600
+        case .week: 86_400
+        case .month: 5 * 86_400
+        }
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        guard span > 0 else { return [] }
+        let margin = span * 0.04
+        var tick = calendar.startOfDay(for: domain.lowerBound)
+        var ticks: [Date] = []
+        while tick <= domain.upperBound {
+            if tick.timeIntervalSince(domain.lowerBound) >= margin, domain.upperBound.timeIntervalSince(tick) >= margin {
+                ticks.append(tick)
+            }
+            // Day steps follow the calendar so midnight stays midnight across clock changes.
+            tick = step >= 86_400
+                ? calendar.date(byAdding: .day, value: Int(step / 86_400), to: tick)!
+                : tick.addingTimeInterval(step)
+        }
+        return ticks
     }
 
     /// Sleeps overlapping the period, clipped to it.

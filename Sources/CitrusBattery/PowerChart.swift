@@ -47,9 +47,10 @@ struct PowerChart: View {
                                                      startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
             }
+            .chartXAxis { timeAxis(labelled: true, domain: liveDomain) }
             .chartYAxisLabel("W")
-            .chartXAxis(.hidden)
-            .frame(height: 110)
+            .timeAxisTitle(period.axisTitle)
+            .frame(height: 140)
         } else {
             placeholder("Collecting readings…")
         }
@@ -62,6 +63,8 @@ struct PowerChart: View {
         let points = PowerTimeline.points(minutes, period: period, now: now)
         let sleeps = PowerTimeline.sleeps(sleeps, period: period, now: now)
         let domain = now.addingTimeInterval(-period.duration)...now
+        // With the charge strip, the time labels go once, under it.
+        let hasCharge = points.contains { $0.chargePercent != nil }
         if points.isEmpty && sleeps.isEmpty {
             placeholder("No readings in the last \(period.label) yet. Citrus Battery records power "
                 + "while it's running and keeps 30 days.")
@@ -85,13 +88,15 @@ struct PowerChart: View {
                 }
             }
             .chartXScale(domain: domain)
-            .chartXAxis { timeAxis }
+            .chartXAxis { timeAxis(labelled: !hasCharge, domain: domain) }
             .chartYAxis { valueAxis(values: .automatic(desiredCount: 4)) { "\($0)" } }
             .chartYAxisLabel("W")
+            .timeAxisTitle(hasCharge ? nil : period.axisTitle)
             .selectable($selection)
-            .frame(height: 120)
+            .frame(height: hasCharge ? 110 : 150)
+            .padding(.bottom, hasCharge ? 10 : 0)
 
-            if points.contains(where: { $0.chargePercent != nil }) {
+            if hasCharge {
                 Chart {
                     sleepBands(sleeps, labelled: false, domain: domain)
                     ForEach(points.filter { $0.chargePercent != nil }) { point in
@@ -106,11 +111,12 @@ struct PowerChart: View {
                     }
                 }
                 .chartXScale(domain: domain)
-                .chartXAxis(.hidden)
+                .chartXAxis { timeAxis(labelled: true, domain: domain) }
                 .chartYScale(domain: 0...100)
                 .chartYAxis { valueAxis(values: .stride(by: 50)) { "\($0)%" } }
+                .timeAxisTitle(period.axisTitle)
                 .selectable($selection)
-                .frame(height: 50)
+                .frame(height: 95)
             }
             legend(hasSleep: !sleeps.isEmpty)
         }
@@ -154,16 +160,24 @@ struct PowerChart: View {
         }
     }
 
-    private var timeAxis: some AxisContent {
-        AxisMarks(values: .automatic(desiredCount: 6)) { _ in
+    private var liveDomain: ClosedRange<Date> {
+        (live.first?.date ?? Date())...(live.last?.date ?? Date())
+    }
+
+    private func timeAxis(labelled: Bool, domain: ClosedRange<Date>) -> some AxisContent {
+        AxisMarks(values: PowerTimeline.ticks(period: period, domain: domain)) { _ in
             AxisGridLine()
-            switch period {
-            case .live, .hour, .day:
-                AxisValueLabel(format: .dateTime.hour().minute(), anchor: .top)
-            case .week:
-                AxisValueLabel(format: .dateTime.weekday(.abbreviated), anchor: .top)
-            case .month:
-                AxisValueLabel(format: .dateTime.day().month(.abbreviated), anchor: .top)
+            if labelled {
+                switch period {
+                case .live:
+                    AxisValueLabel(format: .dateTime.hour().minute().second(), anchor: .top)
+                case .hour, .day:
+                    AxisValueLabel(format: .dateTime.hour().minute(), anchor: .top)
+                case .week:
+                    AxisValueLabel(format: .dateTime.weekday(.abbreviated), anchor: .top)
+                case .month:
+                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), anchor: .top)
+                }
             }
         }
     }
@@ -247,6 +261,18 @@ struct PowerChart: View {
 }
 
 private extension View {
+    /// The time axis title, centred under the chart.
+    @ViewBuilder
+    func timeAxisTitle(_ title: String?) -> some View {
+        if let title {
+            chartXAxisLabel(position: .bottom, alignment: .center) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            self
+        }
+    }
+
     /// Hover to inspect a moment; needs macOS 14.
     @ViewBuilder
     func selectable(_ selection: Binding<Date?>) -> some View {

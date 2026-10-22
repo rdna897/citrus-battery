@@ -1017,3 +1017,17 @@ struct FakeSMC: SMCReading {
         #expect(BatteryFlow.describe(battery).title == "Discharging with")
     }
 }
+
+@Suite struct PowerAxisTests {
+    @Test func ticksAtRoundTimesAwayFromEdges() {
+        let utc = ManufactureDateTests.utc
+        let now = utc.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 11, minute: 50))!
+        let day = PowerTimeline.ticks(period: .day, domain: now.addingTimeInterval(-86_400)...now, calendar: utc)
+        let hours = day.map { utc.component(.hour, from: $0) }
+        // 12:00 yesterday is within 4% of the left edge and today's 12:00 is past the end.
+        #expect(hours == [15, 18, 21, 0, 3, 6, 9])
+        let week = PowerTimeline.ticks(period: .week, domain: now.addingTimeInterval(-7 * 86_400)...now, calendar: utc)
+        #expect(week.count == 7)
+        #expect(week.allSatisfy { utc.component(.hour, from: $0) == 0 })
+    }
+}
