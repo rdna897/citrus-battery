@@ -75,7 +75,8 @@ Click any screenshot to see it at full resolution.
 - Battery manufacturer and manufacture date. The date comes from what the battery
   records or from its serial number, or is estimated from its operating hours.
 - Power use from the SMC: system usage, its 1-minute peak, adapter input, battery
-  charge or discharge rate, CPU temperature, and a live power chart.
+  charge or discharge rate, CPU temperature, and a power chart for the last 2 minutes,
+  hour, day, week or month, with the battery's charge level and the times the Mac slept.
 - Charger check: the charger's name and maker, the power it agreed with the Mac, the
   USB-C voltage and current options it offers, and how much it's supplying now. It says
   when the charger is what limits charging speed, or can't keep up and the battery

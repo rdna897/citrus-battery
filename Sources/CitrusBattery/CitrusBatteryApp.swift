@@ -300,7 +300,10 @@ enum Snapshot {
             let serial = monitor.macInfo.serialNumber ?? monitor.macInfo.modelIdentifier
             let store = try? HistoryStore()
             let trend = (try? store?.entries(deviceSerial: serial)).flatMap { HealthForecast.trend(entries: $0) }
-            view = AnyView(MacDetailContent(trend: trend, sleepSessions: (try? store?.sleepSessions()) ?? [])
+            let since = Date().addingTimeInterval(-PowerTimeline.retention)
+            view = AnyView(MacDetailContent(trend: trend, sleepSessions: (try? store?.sleepSessions()) ?? [],
+                                            powerMinutes: (try? store?.powerMinutes(since: since)) ?? [],
+                                            sleepPeriods: (try? store?.sleepPeriods(since: since)) ?? [])
                 .environmentObject(monitor)
                 .environmentObject(Navigator())
                 .frame(width: 720)

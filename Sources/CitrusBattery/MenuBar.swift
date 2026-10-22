@@ -97,8 +97,8 @@ struct MenuBarPanel: View {
                     InfoRow("Cycles", battery.cycleCount.map(String.init))
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
                     InfoRow("System usage", monitor.displayedSystemWatts.map { String(format: "%.1f W", $0) })
-                    InfoRow((battery.batteryPowerWatts ?? 0) >= 0 ? "Charging with" : "Discharging with",
-                            battery.batteryPowerWatts.map { String(format: "%.1f W", abs($0)) })
+                    let flow = BatteryFlow.describe(battery)
+                    InfoRow(flow.title, flow.value)
                     if let limit = monitor.chargeLimit?.macOSLimitPercent {
                         InfoRow("Charge Limit", "\(limit)%")
                     }

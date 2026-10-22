@@ -159,6 +159,17 @@ public final class HistoryStore: @unchecked Sendable {
                 end_capacity INTEGER NOT NULL,
                 full_charge_capacity INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS power_minutes (
+                start REAL PRIMARY KEY,
+                average_watts REAL NOT NULL,
+                peak_watts REAL NOT NULL,
+                charge_percent INTEGER,
+                on_adapter INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sleep_periods (
+                start REAL PRIMARY KEY,
+                end REAL NOT NULL
+            );
             """)
         try renameLegacyColumn()
     }
@@ -304,6 +315,86 @@ public final class HistoryStore: @unchecked Sendable {
             }
             return result
         }
+    }
+
+    // MARK: Power timeline
+
+    /// Saves a minute and drops data older than `PowerTimeline.retention`.
+    public func insert(_ minute: PowerMinute) throws {
+        try locked {
+            let statement = try prepare("""
+                INSERT OR REPLACE INTO power_minutes (start, average_watts, peak_watts, charge_percent, on_adapter)
+                VALUES (?, ?, ?, ?, ?)
+                """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, minute.start.timeIntervalSince1970)
+            bind(statement, 2, minute.averageWatts)
+            bind(statement, 3, minute.peakWatts)
+            bind(statement, 4, minute.chargePercent)
+            bind(statement, 5, minute.onAdapter ? 1 : 0)
+            try step(statement)
+            try deleteBefore(minute.start.addingTimeInterval(-PowerTimeline.retention))
+        }
+    }
+
+    /// Saved minutes since `date`, oldest first.
+    public func powerMinutes(since date: Date) throws -> [PowerMinute] {
+        try locked {
+            let statement = try prepare("""
+                SELECT start, average_watts, peak_watts, charge_percent, on_adapter
+                FROM power_minutes WHERE start >= ? ORDER BY start
+                """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, date.timeIntervalSince1970)
+            var result: [PowerMinute] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                result.append(PowerMinute(
+                    start: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    averageWatts: sqlite3_column_double(statement, 1),
+                    peakWatts: sqlite3_column_double(statement, 2),
+                    chargePercent: int(statement, 3),
+                    onAdapter: (int(statement, 4) ?? 0) != 0))
+            }
+            return result
+        }
+    }
+
+    /// Records a time the Mac was asleep, plugged in or not.
+    public func insertSleepPeriod(_ period: DateInterval) throws {
+        try locked {
+            let statement = try prepare("INSERT OR REPLACE INTO sleep_periods (start, end) VALUES (?, ?)")
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, period.start.timeIntervalSince1970)
+            bind(statement, 2, period.end.timeIntervalSince1970)
+            try step(statement)
+            try deleteBefore(period.end.addingTimeInterval(-PowerTimeline.retention))
+        }
+    }
+
+    /// Sleeps that ended after `date`, oldest first.
+    public func sleepPeriods(since date: Date) throws -> [DateInterval] {
+        try locked {
+            let statement = try prepare("SELECT start, end FROM sleep_periods WHERE end >= ? ORDER BY start")
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, date.timeIntervalSince1970)
+            var result: [DateInterval] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let start = sqlite3_column_double(statement, 0), end = sqlite3_column_double(statement, 1)
+                guard end >= start else { continue }
+                result.append(DateInterval(start: Date(timeIntervalSince1970: start),
+                                           end: Date(timeIntervalSince1970: end)))
+            }
+            return result
+        }
+    }
+
+    /// Drops power minutes and sleep periods older than `date` (caller holds the lock).
+    private func deleteBefore(_ date: Date) throws {
+        let cutoff = date.timeIntervalSince1970
+        try execute("""
+            DELETE FROM power_minutes WHERE start < \(cutoff);
+            DELETE FROM sleep_periods WHERE end < \(cutoff);
+            """)
     }
 
     // MARK: Devices

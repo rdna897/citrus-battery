@@ -16,6 +16,9 @@ final class HistoryController: ObservableObject {
     @Published private(set) var trends: [String: HealthTrend] = [:]
     /// This Mac's sleeps on battery, newest first.
     @Published private(set) var sleepSessions: [SleepSession] = []
+    /// The last 30 days of power readings and sleeps, for the power chart.
+    @Published private(set) var powerMinutes: [PowerMinute] = []
+    @Published private(set) var sleepPeriods: [DateInterval] = []
 
     private let store: HistoryStore?
     private weak var monitor: BatteryMonitor?
@@ -26,6 +29,8 @@ final class HistoryController: ObservableObject {
     private let launchDate = Date()
     /// The reading taken as the Mac went to sleep.
     private var sleepReading: (date: Date, battery: MacBatterySnapshot)?
+    private var sleepStarted: Date?
+    private var powerAggregator = PowerMinuteAggregator()
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -40,6 +45,10 @@ final class HistoryController: ObservableObject {
         observers.append(monitor.$battery
             .compactMap { $0 }
             .sink { [weak self] battery in self?.considerAutoRecord(mac: battery) })
+        // `$power` publishes after `battery` has been updated for the same reading.
+        observers.append(monitor.$power
+            .sink { [weak self] power in self?.recordPower(power) })
+        loadPowerTimeline()
         observers.append(iosDevices.$devices
             .sink { [weak self] devices in
                 for device in devices where device.state == .ready {
@@ -128,12 +137,20 @@ final class HistoryController: ObservableObject {
     // MARK: Sleep
 
     private func willSleep() {
+        sleepStarted = Date()
         sleepReading = MacBatteryReader.read().map { (Date(), $0) }
+        if let minute = powerAggregator.flush() { savePowerMinute(minute) }
     }
 
     /// Measures the sleep once the gauge has refreshed after waking (about once a
     /// minute); until then it still reports the values from before sleep.
     private func didWake() {
+        if let start = sleepStarted, Date().timeIntervalSince(start) >= 60 {
+            let period = DateInterval(start: start, end: Date())
+            perform { try store?.insertSleepPeriod(period) }
+            sleepPeriods.append(period)
+        }
+        sleepStarted = nil
         guard let sleep = sleepReading else { return }
         sleepReading = nil
         let wokeAt = Date()
@@ -154,6 +171,37 @@ final class HistoryController: ObservableObject {
 
     private func reloadSleepSessions() {
         perform { sleepSessions = try store?.sleepSessions() ?? [] }
+    }
+
+    // MARK: Power timeline
+
+    private func recordPower(_ power: PowerReadings) {
+        guard let watts = power.systemWatts else { return }
+        let battery = monitor?.battery
+        let charge = battery?.powerSource?.chargePercent
+            ?? battery?.rawChargeFraction.map { Int(($0 * 100).rounded()) }
+        if let minute = powerAggregator.add(watts: watts, at: Date(), chargePercent: charge,
+                                            onAdapter: battery?.isExternalPowerConnected ?? true) {
+            savePowerMinute(minute)
+        }
+    }
+
+    private func savePowerMinute(_ minute: PowerMinute) {
+        perform { try store?.insert(minute) }
+        powerMinutes.append(minute)
+        let cutoff = Date().addingTimeInterval(-PowerTimeline.retention)
+        if let first = powerMinutes.first, first.start < cutoff {
+            powerMinutes.removeAll { $0.start < cutoff }
+            sleepPeriods.removeAll { $0.end < cutoff }
+        }
+    }
+
+    private func loadPowerTimeline() {
+        let since = Date().addingTimeInterval(-PowerTimeline.retention)
+        perform {
+            powerMinutes = try store?.powerMinutes(since: since) ?? []
+            sleepPeriods = try store?.sleepPeriods(since: since) ?? []
+        }
     }
 
     // MARK: Editing

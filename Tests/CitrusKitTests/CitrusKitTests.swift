@@ -948,3 +948,72 @@ struct FakeSMC: SMCReading {
         #expect(sessions.first?.startCapacity == 4000)
     }
 }
+
+@Suite struct PowerTimelineTests {
+    static let start = ManufactureDateTests.utc.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 9))!
+
+    static func minute(_ offset: Int, watts: Double = 6, charge: Int? = 80) -> PowerMinute {
+        PowerMinute(start: start + Double(offset) * 60, averageWatts: watts, peakWatts: watts + 2,
+                    chargePercent: charge, onAdapter: false)
+    }
+
+    @Test func aggregatesReadingsIntoMinutes() throws {
+        var aggregator = PowerMinuteAggregator()
+        #expect(aggregator.add(watts: 4, at: Self.start + 5, chargePercent: 80, onAdapter: false) == nil)
+        #expect(aggregator.add(watts: 8, at: Self.start + 50, chargePercent: 79, onAdapter: false) == nil)
+        let next = aggregator.add(watts: 5, at: Self.start + 65, chargePercent: 79, onAdapter: false)
+        let finished = try #require(next)
+        #expect(finished == PowerMinute(start: Self.start, averageWatts: 6, peakWatts: 8,
+                                        chargePercent: 79, onAdapter: false))
+        // Flushing before sleep keeps the partial minute.
+        #expect(aggregator.flush()?.start == Self.start + 60)
+        #expect(aggregator.flush() == nil)
+    }
+
+    @Test func bucketsAndBreaksAtGaps() {
+        // An hour, a two-hour gap (asleep), then another hour.
+        let minutes = (0..<60).map { Self.minute($0) } + (180..<240).map { Self.minute($0, watts: 12, charge: 60) }
+        let points = PowerTimeline.points(minutes, period: .day, now: Self.start + 240 * 60)
+        #expect(points.count == 24)
+        #expect(points.first?.segment == 0)
+        #expect(points.last?.segment == 1)
+        #expect(points.last?.averageWatts == 12)
+        #expect(points.last?.peakWatts == 14)
+        #expect(points.last?.chargePercent == 60)
+        // Readings outside the period are left out.
+        #expect(PowerTimeline.points(minutes, period: .hour, now: Self.start + 240 * 60).count == 60)
+    }
+
+    @Test func clipsSleepsToThePeriod() {
+        let now = Self.start + 3600
+        let sleeps = [DateInterval(start: Self.start - 8 * 3600, end: Self.start + 600),
+                      DateInterval(start: Self.start - 30 * 3600, end: Self.start - 26 * 3600)]
+        let clipped = PowerTimeline.sleeps(sleeps, period: .hour, now: now)
+        #expect(clipped == [DateInterval(start: Self.start, end: Self.start + 600)])
+    }
+
+    @Test func storeRoundTripsAndPrunes() throws {
+        let store = try HistoryStore(url: nil)
+        try store.insert(Self.minute(0))
+        try store.insert(Self.minute(1, charge: nil))
+        try store.insertSleepPeriod(DateInterval(start: Self.start + 120, end: Self.start + 7200))
+        #expect(try store.powerMinutes(since: Self.start).count == 2)
+        #expect(try store.powerMinutes(since: Self.start).last?.chargePercent == nil)
+        #expect(try store.sleepPeriods(since: Self.start).count == 1)
+        // A reading 31 days later drops the old ones.
+        try store.insert(Self.minute(31 * 24 * 60))
+        #expect(try store.powerMinutes(since: .distantPast).count == 1)
+        #expect(try store.sleepPeriods(since: .distantPast).isEmpty)
+    }
+
+    @Test func batteryFlowLabels() {
+        var battery = ChargerCheckTests.battery(adapter: ChargerCheckTests.appleCharger, amperage: 0)
+        #expect(BatteryFlow.describe(battery) == ("Battery", "Not charging (running on adapter)"))
+        battery.isExternalPowerConnected = false
+        #expect(BatteryFlow.describe(battery) == ("Battery", "Idle"))
+        battery.amperageMilliamps = 1000
+        #expect(BatteryFlow.describe(battery).title == "Charging with")
+        battery.amperageMilliamps = -500
+        #expect(BatteryFlow.describe(battery).title == "Discharging with")
+    }
+}

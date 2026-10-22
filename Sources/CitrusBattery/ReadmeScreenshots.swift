@@ -22,6 +22,7 @@ enum ReadmeScreenshots {
             PreferenceKey.capacityUnit: "milliampHours",
             PreferenceKey.capacityStyle: "raw",
             PreferenceKey.updateInterval: "delayed",
+            PreferenceKey.powerChartPeriod: PowerPeriod.day.rawValue,
             PreferenceKey.autosaveNewDevices: true,
             "AppleLocale": "en_GB",
             "AppleLanguages": ["en"],
@@ -45,6 +46,7 @@ enum ReadmeScreenshots {
             try store.insert(SleepSession(start: end.addingTimeInterval(-hours * 3600), end: end,
                                           startCapacity: 3900, endCapacity: 3900 - lost, fullChargeCapacity: 4518))
         }
+        try insertSamplePower(into: store)
         let history = HistoryController(monitor: monitor, iosDevices: devices, store: store)
         let navigator = Navigator()
 
@@ -69,6 +71,35 @@ enum ReadmeScreenshots {
                     to: directory.appendingPathComponent("lifetime.png"))
         try capture(dependencies(AdvancedViewer(sampleSections: advancedSections)), title: "Advanced Viewer",
                     size: NSSize(width: 920, height: 690), to: directory.appendingPathComponent("advanced.png"))
+    }
+
+    /// A week of power readings: working days with a charge in the morning and
+    /// the Mac asleep each night.
+    private static func insertSamplePower(into store: HistoryStore) throws {
+        // The chart ends at the current time, so the sample does too.
+        let now = Date()
+        let calendar = Calendar(identifier: .gregorian)
+        var charge = 80.0
+        var minute = now.addingTimeInterval(-7 * 86_400)
+        while minute < now {
+            let hour = calendar.component(.hour, from: minute)
+            if hour >= 23 || hour < 7 {
+                let wake = calendar.date(bySettingHour: 7, minute: 0, second: 0,
+                                         of: hour >= 23 ? minute.addingTimeInterval(86_400) : minute)!
+                try store.insertSleepPeriod(DateInterval(start: minute, end: min(wake, now)))
+                charge -= wake.timeIntervalSince(minute) / 3600 * 0.3
+                minute = wake
+                continue
+            }
+            let index = minute.timeIntervalSince1970 / 60
+            let plugged = (9..<11).contains(hour)
+            let burst = Int(index) % 97 < 6 ? 14.0 : 0
+            let watts = 5.5 + 2 * sin(index / 13) + burst
+            charge = plugged ? min(charge + 0.6, 95) : max(charge - watts / 50 * 1.6 / 6, 8)
+            try store.insert(PowerMinute(start: minute, averageWatts: watts, peakWatts: watts + 3 + burst / 2,
+                                         chargePercent: Int(charge), onAdapter: plugged))
+            minute += 60
+        }
     }
 
     private static func makeMonitor() -> BatteryMonitor {

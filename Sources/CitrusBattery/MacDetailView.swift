@@ -8,7 +8,8 @@ struct MacDetailView: View {
     var body: some View {
         ScrollView {
             MacDetailContent(trend: history.thisMacSerial.flatMap { history.trends[$0] },
-                             sleepSessions: history.sleepSessions)
+                             sleepSessions: history.sleepSessions,
+                             powerMinutes: history.powerMinutes, sleepPeriods: history.sleepPeriods)
         }
         .navigationTitle("This Mac")
         .toolbar { AdvancedViewerButton(target: AdvancedTarget.mac) }
@@ -21,6 +22,9 @@ struct MacDetailContent: View {
     var trend: HealthTrend?
     /// Sleeps on battery, newest first.
     var sleepSessions: [SleepSession] = []
+    /// Saved power readings and sleeps for the power chart.
+    var powerMinutes: [PowerMinute] = []
+    var sleepPeriods: [DateInterval] = []
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
@@ -122,24 +126,14 @@ struct MacDetailContent: View {
                     InfoRow("System usage", watts(monitor.displayedSystemWatts))
                     InfoRow("Max usage (1 min)", watts(monitor.maxSystemWattsLastMinute))
                     if let battery {
-                        InfoRow(batteryFlowTitle(battery), watts(battery.batteryPowerWatts.map(abs)))
+                        let flow = BatteryFlow.describe(battery)
+                        InfoRow(flow.title, flow.value)
                     }
                     InfoRow("From adapter", watts(monitor.power.adapterWatts))
                     InfoRow("CPU temperature", monitor.power.cpuTemperatureCelsius.map(temperatureUnit.format(celsius:)))
                 }
-                if monitor.powerHistory.count > 1 {
-                    Chart(monitor.powerHistory) { sample in
-                        LineMark(x: .value("Time", sample.date), y: .value("Watts", sample.systemWatts))
-                            .interpolationMethod(.monotone)
-                        AreaMark(x: .value("Time", sample.date), y: .value("Watts", sample.systemWatts))
-                            .foregroundStyle(.linearGradient(
-                                colors: [Color.accentColor.opacity(0.25), .clear],
-                                startPoint: .top, endPoint: .bottom))
-                            .interpolationMethod(.monotone)
-                    }
-                    .chartYAxisLabel("W")
-                    .chartXAxis(.hidden)
-                    .frame(height: 110)
+                if monitor.power.systemWatts != nil {
+                    PowerChart(live: monitor.powerHistory, minutes: powerMinutes, sleeps: sleepPeriods)
                 }
             }
         }
@@ -219,10 +213,6 @@ struct MacDetailContent: View {
         if battery.isCharging { return "Charging" }
         if battery.isExternalPowerConnected { return "Plugged in, not charging" }
         return "On battery"
-    }
-
-    private func batteryFlowTitle(_ battery: MacBatterySnapshot) -> String {
-        (battery.batteryPowerWatts ?? 0) >= 0 ? "Charging with" : "Discharging with"
     }
 
     /// The power controller's measurement, else the SMC's.

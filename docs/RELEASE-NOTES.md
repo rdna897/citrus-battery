@@ -35,6 +35,12 @@ Your battery history and preferences are kept.
 - **Health forecast.** History draws a trend line through the last year of readings
   and estimates how fast the battery is losing capacity and roughly when it will reach
   80%. The device pages show the same estimate as **Health trend**.
+- **Power history.** The power chart now covers the last 2 minutes, hour, 24 hours,
+  7 days or 30 days, with the battery's charge level underneath and the times the Mac
+  was asleep shaded. On macOS 14 or later, hover over the chart for exact readings.
+  History starts when you install this version.
+- **Clearer battery readings.** When the battery is resting on the charger, the Power
+  card says "Not charging (running on adapter)" instead of "Charging with 0.0 W".
 - **Charger check.** A new Charger card shows the charger's name and maker, the power
   it agreed with the Mac or device, the USB-C voltages it offers and how much it is
   supplying now. It says when the charger limits charging speed, is a basic 5 V supply,
