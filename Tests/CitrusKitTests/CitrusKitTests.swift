@@ -865,10 +865,12 @@ struct FakeSMC: SMCReading {
 @Suite struct CellBalanceTests {
     @Test func cellsFromSMCOnAppleSilicon() {
         // BC1V–BC3V read from an M4 MacBook Air; they sum to the pack voltage.
+        // Integers are little-endian on Apple silicon and big-endian on Intel.
+        func ui16(_ bytes: [UInt8]) -> SMCValue {
+            SMCValue(type: "ui16", bytes: SMCValue.hostUsesLittleEndianIntegers ? bytes : bytes.reversed())
+        }
         let smc = FakeSMC(values: [
-            "BC1V": SMCValue(type: "ui16", bytes: [0x45, 0x11]),
-            "BC2V": SMCValue(type: "ui16", bytes: [0x4F, 0x11]),
-            "BC3V": SMCValue(type: "ui16", bytes: [0x51, 0x11]),
+            "BC1V": ui16([0x45, 0x11]), "BC2V": ui16([0x4F, 0x11]), "BC3V": ui16([0x51, 0x11]),
         ])
         let snapshot = MacBatterySnapshot(registry: SnapshotTests.appleSilicon, smc: smc, powerSource: nil)
         #expect(snapshot.cellVoltagesMillivolts == [4421, 4431, 4433])
