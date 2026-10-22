@@ -1,4 +1,4 @@
-Citrus Battery 1.1.1 is a free, open source battery monitor for macOS, iPhone and iPad.
+Citrus Battery 1.2 is a free, open source battery monitor for macOS, iPhone and iPad.
 Please report problems through GitHub Issues.
 
 ## Download the application
@@ -7,8 +7,8 @@ Please report problems through GitHub Issues.
 
 | Your Mac | Application download |
 | --- | --- |
-| **Apple Silicon — M1 or later** | **[Download Citrus Battery for Apple Silicon](https://github.com/rdna897/citrus-battery/releases/download/v1.1.1/CitrusBattery-1.1.1-arm64-macOS13.0.zip)** (`arm64`) |
-| **Intel** | **[Download Citrus Battery for Intel](https://github.com/rdna897/citrus-battery/releases/download/v1.1.1/CitrusBattery-1.1.1-x86_64-macOS13.0.zip)** (`x86_64`) |
+| **Apple Silicon — M1 or later** | **[Download Citrus Battery for Apple Silicon](https://github.com/rdna897/citrus-battery/releases/download/v1.2/CitrusBattery-1.2-arm64-macOS13.0.zip)** (`arm64`) |
+| **Intel** | **[Download Citrus Battery for Intel](https://github.com/rdna897/citrus-battery/releases/download/v1.2/CitrusBattery-1.2-x86_64-macOS13.0.zip)** (`x86_64`) |
 
 To check which Mac you have, open **Apple menu → About This Mac**. An Apple chip
 means Apple Silicon; an Intel processor means Intel.
@@ -26,25 +26,30 @@ first launch. If you trust this release, try opening it, then go to
 Later updates may need approval again. Managed Macs may prevent this exception.
 See [Apple's first-launch guidance](https://support.apple.com/en-gb/102445).
 
-**Using 1.1?** Citrus Battery offers this update itself. **Upgrading from 1.0.1 or
+**Using 1.1 or later?** Citrus Battery offers this update itself. **Upgrading from 1.0.1 or
 earlier?** Quit Citrus Battery and replace the app in Applications with this version.
 Your battery history and preferences are kept.
 
-## New in 1.1.1
+## New in 1.2
 
-- **Now runs on macOS 13 Ventura and macOS 14 Sonoma.** Earlier releases needed
-  macOS 15, because their iPhone/iPad libraries were built for a newer macOS. They
-  are now built from source for macOS 13.
-- **Updates ask first.** On its second launch, Citrus Battery asks whether to check
-  for updates automatically, and whether to install them without asking. Change
-  either choice in **Settings → Updates**, or use **Check for Updates…** at any time.
+- **Health forecast.** History draws a trend line through the last year of readings
+  and estimates how fast the battery is losing capacity and roughly when it will reach
+  80%. The device pages show the same estimate as **Health trend**.
+- **Charger check.** A new Charger card shows the charger's name and maker, the power
+  it agreed with the Mac or device, the USB-C voltages it offers and how much it is
+  supplying now. It says when the charger limits charging speed, is a basic 5 V supply,
+  or can't keep up and the battery drains while plugged in.
+- **Cell voltages.** The voltage of each cell in the pack, with a warning when they
+  drift apart.
+- **Sleep drain.** How much charge the Mac lost while asleep on battery, with a
+  warning when it is unusually high.
 
 ## Included features
 
-Mac battery health, charge cycles, temperature, power readings, charger details,
-charge limit detection, iPhone/iPad monitoring over USB and Wi-Fi, automatic
-history recording, lifetime data, an advanced hardware viewer, a customizable
-menu bar, notifications and Open at Login.
+Mac battery health and its forecast, charge cycles, temperature, cell voltages,
+power readings, a charger check, sleep drain, charge limit detection, iPhone/iPad
+monitoring over USB and Wi-Fi, automatic history recording, lifetime data, an
+advanced hardware viewer, a customizable menu bar, notifications and Open at Login.
 
 Data availability depends on the Mac, battery and iOS device. Online comparisons
 and printable reports are not included in this release.
