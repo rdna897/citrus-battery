@@ -150,6 +150,10 @@ need coconutBattery Plus.
 | Mac battery: charge, health, cycles, temperature, manufacture date | ✓ | ✓ |
 | Live power use | ✓ | ✓ |
 | Charge limit detection and advice | ✓ | — |
+| Power history chart, up to 30 days, with sleep and brief wakes | ✓ | — |
+| Charger check: agreed power, voltage options, whether it limits charging | ✓ | — |
+| Sleep drain per sleep, with a warning when high | ✓ | — |
+| Health forecast: loss per year and when health reaches 80% | ✓ | — |
 | iPhone/iPad over USB | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | Paid |
 | History with automatic recording and backups | ✓ | ✓ |
