@@ -60,23 +60,26 @@ struct PowerChart: View {
 
     @ViewBuilder
     private func historyCharts(now: Date) -> some View {
-        let points = PowerTimeline.points(minutes, period: period, now: now)
-        let sleeps = PowerTimeline.sleeps(sleeps, period: period, now: now)
+        let domain = PowerTimeline.domain(period: period, minutes: minutes, sleeps: sleeps, now: now)
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        let sleeps = PowerTimeline.sleeps(sleeps, in: domain)
+        let points = PowerTimeline.points(minutes, in: domain, sleeps: sleeps)
         let wakes = PowerTimeline.briefWakes(minutes, sleeps: sleeps)
-        // Over a week or a month, nightly wakes would crowd the bands into stripes.
-        let markedWakes = period == .hour || period == .day ? wakes : []
-        let domain = now.addingTimeInterval(-period.duration)...now
+        // Wakes close enough to overlap share one mark. Over more than two days,
+        // nightly marks would crowd the bands, so they're only counted.
+        let wakeMarks = span <= 2 * 86_400 ? PowerTimeline.group(wakes, within: span * 0.015) : []
+        let title = axisTitle(domain: domain, now: now)
         // With the charge strip, the time labels go once, under it.
         let hasCharge = points.contains { $0.chargePercent != nil }
         if points.isEmpty && sleeps.isEmpty {
             placeholder("No readings in the last \(period.label) yet. Citrus Battery records power "
                 + "while it's running and keeps 30 days.")
         } else {
-            readout(points: points, sleeps: sleeps, wakes: wakes, marked: markedWakes)
+            readout(points: points, sleeps: sleeps, wakes: wakes, marks: wakeMarks, span: span)
             Chart {
                 sleepBands(sleeps, labelled: true, domain: domain)
-                ForEach(markedWakes) { wake in
-                    PointMark(x: .value("Woke briefly", wake.middle), y: .value("Watts", 0))
+                ForEach(wakeMarks, id: \.first!.start) { group in
+                    PointMark(x: .value("Woke briefly", Self.middle(of: group)), y: .value("Watts", 0))
                         .symbol {
                             Circle().fill(Self.sleepColour).frame(width: 7, height: 7)
                                 .overlay(Circle().stroke(.background, lineWidth: 1.5))
@@ -101,7 +104,7 @@ struct PowerChart: View {
             .chartXAxis { timeAxis(labelled: !hasCharge, domain: domain) }
             .chartYAxis { valueAxis(values: .automatic(desiredCount: 4)) { "\($0)" } }
             .chartYAxisLabel("W")
-            .timeAxisTitle(hasCharge ? nil : period.axisTitle)
+            .timeAxisTitle(hasCharge ? nil : title)
             .selectable($selection)
             .frame(height: hasCharge ? 110 : 150)
             .padding(.bottom, hasCharge ? 10 : 0)
@@ -111,7 +114,7 @@ struct PowerChart: View {
                     sleepBands(sleeps, labelled: false, domain: domain)
                     ForEach(points.filter { $0.chargePercent != nil }) { point in
                         LineMark(x: .value("Time", point.date), y: .value("Charge", point.chargePercent ?? 0),
-                                 series: .value("Segment", point.segment))
+                                 series: .value("Segment", point.chargeSegment))
                             .foregroundStyle(.green)
                     }
                     if let selection {
@@ -124,11 +127,11 @@ struct PowerChart: View {
                 .chartXAxis { timeAxis(labelled: true, domain: domain) }
                 .chartYScale(domain: 0...100)
                 .chartYAxis { valueAxis(values: .stride(by: 50)) { "\($0)%" } }
-                .timeAxisTitle(period.axisTitle)
+                .timeAxisTitle(title)
                 .selectable($selection)
                 .frame(height: 95)
             }
-            legend(hasSleep: !sleeps.isEmpty, hasWakes: !markedWakes.isEmpty)
+            legend(hasSleep: !sleeps.isEmpty, hasWakes: !wakeMarks.isEmpty)
         }
     }
 
@@ -175,34 +178,58 @@ struct PowerChart: View {
     }
 
     private func timeAxis(labelled: Bool, domain: ClosedRange<Date>) -> some AxisContent {
-        AxisMarks(values: PowerTimeline.ticks(period: period, domain: domain)) { _ in
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        let step = PowerTimeline.tickStep(span: span)
+        return AxisMarks(values: PowerTimeline.ticks(domain: domain)) { _ in
             AxisGridLine()
             if labelled {
-                switch period {
-                case .live:
+                if step < 60 {
                     AxisValueLabel(format: .dateTime.hour().minute().second(), anchor: .top)
-                case .hour, .day:
+                } else if step < 86_400 {
                     AxisValueLabel(format: .dateTime.hour().minute(), anchor: .top)
-                case .week:
+                } else if step == 86_400 && span <= 7 * 86_400 {
                     AxisValueLabel(format: .dateTime.weekday(.abbreviated), anchor: .top)
-                case .month:
+                } else {
                     AxisValueLabel(format: .dateTime.day().month(.abbreviated), anchor: .top)
                 }
             }
         }
     }
 
+    /// "Last 24 hours", or when readings start later, when they start.
+    private func axisTitle(domain: ClosedRange<Date>, now: Date) -> String {
+        let start = domain.lowerBound
+        guard now.timeIntervalSince(start) < period.duration - 60 else { return period.axisTitle }
+        let text = Calendar.current.isDate(start, inSameDayAs: now)
+            ? start.formatted(date: .omitted, time: .shortened)
+            : start.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+        return "Since \(text), when recording began"
+    }
+
+    private static func middle(of wakes: [BriefWake]) -> Date {
+        let first = wakes.first!.middle
+        return first.addingTimeInterval(wakes.last!.middle.timeIntervalSince(first) / 2)
+    }
+
     /// The hovered moment, or a summary of the period.
-    private func readout(points: [PowerPoint], sleeps: [DateInterval], wakes: [BriefWake], marked: [BriefWake]) -> some View {
+    private func readout(points: [PowerPoint], sleeps: [DateInterval], wakes: [BriefWake],
+                         marks: [[BriefWake]], span: TimeInterval) -> some View {
         let text: String
-        if let selection, let wake = nearest(to: selection, in: marked) {
-            text = "Woke briefly at \(timeText(wake.start)) with the screen off · "
-                + String(format: "%.1f W peak", wake.peakWatts)
+        let reach = max(PowerTimeline.bucket(span: span), span * 0.01)
+        if let selection, let group = nearest(to: selection, in: marks, within: reach) {
+            let peak = String(format: "%.1f W peak", group.map(\.peakWatts).max() ?? 0)
+            if group.count == 1 {
+                text = "Woke briefly at \(timeText(group[0].start)) with the screen off · \(peak)"
+            } else {
+                let range = "\(timeText(group.first!.start))–\(timeText(group.last!.start))"
+                text = "Woke briefly \(timesText(group.count)) with the screen off, \(range) · \(peak)"
+            }
         } else if let selection, let sleep = sleeps.first(where: { $0.contains(selection) }) {
             let woke = wakes.filter { sleep.contains($0.middle) }.count
             text = "Asleep \(range(sleep)) (\(DurationFormat.readable(Int(sleep.duration / 60))))"
                 + (woke > 0 ? ", woke briefly \(timesText(woke))" : "")
-        } else if let selection, let point = nearest(to: selection, in: points) {
+        } else if let selection, let point = nearest(to: selection, in: points,
+                                                     within: PowerTimeline.bucket(span: span)) {
             var parts = [timeText(point.date),
                          String(format: "%.1f W average, %.1f W peak", point.averageWatts, point.peakWatts)]
             if let charge = point.chargePercent { parts.append("\(charge)% charged") }
@@ -229,7 +256,7 @@ struct PowerChart: View {
         HStack(spacing: 14) {
             legendItem(Color.accentColor, "System power")
             if minutes.contains(where: { $0.chargePercent != nil }) {
-                legendItem(.green, "Charge")
+                legendItem(.green, "Charge level")
             }
             if hasSleep {
                 HStack(spacing: 4) {
@@ -265,18 +292,17 @@ struct PowerChart: View {
             .frame(maxWidth: .infinity, minHeight: 110)
     }
 
-    private func nearest(to date: Date, in points: [PowerPoint]) -> PowerPoint? {
+    private func nearest(to date: Date, in points: [PowerPoint], within reach: TimeInterval) -> PowerPoint? {
         guard let point = points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }),
-              abs(point.date.timeIntervalSince(date)) <= period.bucket
+              abs(point.date.timeIntervalSince(date)) <= reach
         else { return nil }
         return point
     }
 
-    /// The closest wake within a few pixels of the pointer.
-    private func nearest(to date: Date, in wakes: [BriefWake]) -> BriefWake? {
-        let reach = max(period.bucket, period.duration * 0.01)
-        return wakes.filter { abs($0.middle.timeIntervalSince(date)) <= reach }
-            .min { abs($0.middle.timeIntervalSince(date)) < abs($1.middle.timeIntervalSince(date)) }
+    /// The closest wake mark within a few pixels of the pointer.
+    private func nearest(to date: Date, in marks: [[BriefWake]], within reach: TimeInterval) -> [BriefWake]? {
+        marks.filter { abs(Self.middle(of: $0).timeIntervalSince(date)) <= reach }
+            .min { abs(Self.middle(of: $0).timeIntervalSince(date)) < abs(Self.middle(of: $1).timeIntervalSince(date)) }
     }
 
     private func timesText(_ count: Int) -> String {

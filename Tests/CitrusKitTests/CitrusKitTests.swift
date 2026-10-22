@@ -973,22 +973,51 @@ struct FakeSMC: SMCReading {
     @Test func bucketsAndBreaksAtGaps() {
         // An hour, a two-hour gap (asleep), then another hour.
         let minutes = (0..<60).map { Self.minute($0) } + (180..<240).map { Self.minute($0, watts: 12, charge: 60) }
-        let points = PowerTimeline.points(minutes, period: .day, now: Self.start + 240 * 60)
+        let now = Self.start + 240 * 60
+        let day = now.addingTimeInterval(-86_400)...now
+        let points = PowerTimeline.points(minutes, in: day)
         #expect(points.count == 24)
         #expect(points.first?.segment == 0)
         #expect(points.last?.segment == 1)
+        #expect(points.last?.chargeSegment == 1)
         #expect(points.last?.averageWatts == 12)
         #expect(points.last?.peakWatts == 14)
         #expect(points.last?.chargePercent == 60)
-        // Readings outside the period are left out.
-        #expect(PowerTimeline.points(minutes, period: .hour, now: Self.start + 240 * 60).count == 60)
+        // Readings outside the domain are left out.
+        #expect(PowerTimeline.points(minutes, in: now.addingTimeInterval(-3600)...now).count == 60)
+        // Asleep through the gap: the power line breaks but the charge line carries on.
+        let sleep = DateInterval(start: Self.start + 59.5 * 60, end: Self.start + 180.5 * 60)
+        let joined = PowerTimeline.points(minutes, in: day, sleeps: [sleep])
+        #expect(joined.last?.segment == 1)
+        #expect(joined.last?.chargeSegment == 0)
+    }
+
+    @Test func trimsTheDomainToWhereReadingsStart() {
+        let now = Self.start + 3 * 3600
+        let minutes = (60..<180).map { Self.minute($0) }
+        #expect(PowerTimeline.domain(period: .day, minutes: minutes, sleeps: [], now: now)
+            == (Self.start + 3600)...now)
+        // A sleep before the first reading counts too.
+        let sleep = DateInterval(start: Self.start + 1800, end: Self.start + 3600)
+        #expect(PowerTimeline.domain(period: .day, minutes: minutes, sleeps: [sleep], now: now)
+            == (Self.start + 1800)...now)
+        // Readings older than the period don't widen it.
+        #expect(PowerTimeline.domain(period: .hour, minutes: [Self.minute(0)] + minutes, sleeps: [], now: now)
+            == (now - 3600)...now)
+        // Nothing saved: the whole period. Just started: at least ten minutes.
+        #expect(PowerTimeline.domain(period: .day, minutes: [], sleeps: [], now: now) == (now - 86_400)...now)
+        #expect(PowerTimeline.domain(period: .day, minutes: [Self.minute(179)], sleeps: [], now: now)
+            == (now - 600)...now)
+        #expect(PowerTimeline.bucket(span: 3600) == 60)
+        #expect(PowerTimeline.bucket(span: 86_400) == 300)
+        #expect(PowerTimeline.bucket(span: 30 * 86_400) == 7200)
     }
 
     @Test func clipsSleepsToThePeriod() {
         let now = Self.start + 3600
         let sleeps = [DateInterval(start: Self.start - 8 * 3600, end: Self.start + 600),
                       DateInterval(start: Self.start - 30 * 3600, end: Self.start - 26 * 3600)]
-        let clipped = PowerTimeline.sleeps(sleeps, period: .hour, now: now)
+        let clipped = PowerTimeline.sleeps(sleeps, in: (now - 3600)...now)
         #expect(clipped == [DateInterval(start: Self.start, end: Self.start + 600)])
     }
 
@@ -1002,6 +1031,9 @@ struct FakeSMC: SMCReading {
                           BriefWake(start: Self.start + 2700, end: Self.start + 2760, peakWatts: 6.5)])
         #expect(wakes.first?.middle == Self.start + 1260)
         #expect(PowerTimeline.briefWakes(minutes, sleeps: []).isEmpty)
+        // Wakes within 25 minutes of each other share a mark.
+        #expect(PowerTimeline.group(wakes, within: 25 * 60).map(\.count) == [2])
+        #expect(PowerTimeline.group(wakes, within: 20 * 60).map(\.count) == [1, 1])
     }
 
     @Test func storeRoundTripsAndPrunes() throws {
@@ -1034,12 +1066,18 @@ struct FakeSMC: SMCReading {
     @Test func ticksAtRoundTimesAwayFromEdges() {
         let utc = ManufactureDateTests.utc
         let now = utc.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 11, minute: 50))!
-        let day = PowerTimeline.ticks(period: .day, domain: now.addingTimeInterval(-86_400)...now, calendar: utc)
+        let day = PowerTimeline.ticks(domain: now.addingTimeInterval(-86_400)...now, calendar: utc)
         let hours = day.map { utc.component(.hour, from: $0) }
         // 12:00 yesterday is within 4% of the left edge and today's 12:00 is past the end.
         #expect(hours == [15, 18, 21, 0, 3, 6, 9])
-        let week = PowerTimeline.ticks(period: .week, domain: now.addingTimeInterval(-7 * 86_400)...now, calendar: utc)
+        let week = PowerTimeline.ticks(domain: now.addingTimeInterval(-7 * 86_400)...now, calendar: utc)
         #expect(week.count == 7)
         #expect(week.allSatisfy { utc.component(.hour, from: $0) == 0 })
+        // A trimmed span of 100 minutes gets ticks every 15 minutes.
+        let short = PowerTimeline.ticks(domain: now.addingTimeInterval(-6000)...now, calendar: utc)
+        #expect(short.map { utc.component(.minute, from: $0) } == [15, 30, 45, 0, 15, 30, 45])
+        let spans: [TimeInterval] = [120, 3600, 30 * 86_400]
+        let steps: [TimeInterval] = [30, 600, 5 * 86_400]
+        #expect(spans.map { PowerTimeline.tickStep(span: $0) } == steps)
     }
 }

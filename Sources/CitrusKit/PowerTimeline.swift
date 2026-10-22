@@ -97,16 +97,6 @@ public enum PowerPeriod: String, CaseIterable, Sendable, Identifiable {
         case .month: 30 * 86_400
         }
     }
-
-    /// Width of each plotted point: a few hundred points per period.
-    public var bucket: TimeInterval {
-        switch self {
-        case .live, .hour: 60
-        case .day: 5 * 60
-        case .week: 30 * 60
-        case .month: 2 * 3600
-        }
-    }
 }
 
 /// One plotted point of the power chart.
@@ -119,6 +109,9 @@ public struct PowerPoint: Sendable, Equatable, Identifiable {
     /// Points in the same segment are joined; a new segment starts after a gap
     /// (the Mac was asleep or the app wasn't running).
     public var segment: Int
+    /// As `segment`, but charge carries on through sleep, so its line only
+    /// breaks where the app wasn't running.
+    public var chargeSegment: Int
 
     public var id: Date { date }
 }
@@ -127,45 +120,75 @@ public enum PowerTimeline {
     /// How long saved minutes and sleeps are kept.
     public static let retention: TimeInterval = 30 * 86_400
 
-    /// Saved minutes averaged into the period's buckets, oldest first.
-    public static func points(_ minutes: [PowerMinute], period: PowerPeriod, now: Date) -> [PowerPoint] {
+    /// The shortest span a history chart shows.
+    public static let minimumSpan: TimeInterval = 10 * 60
+
+    /// The time span to chart: the period, unless saved readings start later,
+    /// in which case it starts with them so a short history fills the width.
+    public static func domain(period: PowerPeriod, minutes: [PowerMinute], sleeps: [DateInterval],
+                              now: Date) -> ClosedRange<Date> {
         let from = now.addingTimeInterval(-period.duration)
-        let bucket = period.bucket
-        let grouped = Dictionary(grouping: minutes.filter { $0.start >= from && $0.start <= now }) {
+        let firstMinute: Date? = minutes.lazy.map(\.start).filter { $0 >= from }.min()
+        let firstSleep: Date? = sleeps.lazy.filter { $0.end > from }.map(\.start).min()
+        guard let first = [firstMinute, firstSleep].compactMap({ $0 }).min() else { return from...now }
+        return min(max(from, first), now.addingTimeInterval(-minimumSpan))...now
+    }
+
+    /// Width of each plotted point: the shortest that keeps a few hundred points.
+    public static func bucket(span: TimeInterval) -> TimeInterval {
+        let buckets: [TimeInterval] = [60, 5 * 60, 30 * 60, 2 * 3600]
+        return buckets.first { span / $0 <= 400 } ?? 2 * 3600
+    }
+
+    /// Saved minutes averaged into buckets across the domain, oldest first.
+    public static func points(_ minutes: [PowerMinute], in domain: ClosedRange<Date>,
+                              sleeps: [DateInterval] = []) -> [PowerPoint] {
+        let bucket = bucket(span: domain.upperBound.timeIntervalSince(domain.lowerBound))
+        let grouped = Dictionary(grouping: minutes.filter { domain.contains($0.start) }) {
             ($0.start.timeIntervalSince1970 / bucket).rounded(.down)
         }
         var points: [PowerPoint] = []
         var segment = 0
+        var chargeSegment = 0
         var previous: Double?
         for key in grouped.keys.sorted() {
             let group = grouped[key]!.sorted { $0.start < $1.start }
             // Weighted by minutes, so a partly covered bucket isn't skewed.
             let average = group.map(\.averageWatts).reduce(0, +) / Double(group.count)
-            if let previous, key - previous > 1 { segment += 1 }
+            if let previous, key - previous > 1 {
+                segment += 1
+                // The buckets on either side of the gap may hold readings from just before
+                // sleep and just after waking, so the sleep need only reach into them.
+                let asleep = sleeps.contains {
+                    $0.start.timeIntervalSince1970 <= (previous + 1) * bucket
+                        && $0.end.timeIntervalSince1970 >= key * bucket
+                }
+                if !asleep { chargeSegment += 1 }
+            }
             previous = key
             points.append(PowerPoint(
                 date: Date(timeIntervalSince1970: key * bucket + bucket / 2),
                 averageWatts: average,
                 peakWatts: group.map(\.peakWatts).max() ?? average,
                 chargePercent: group.last { $0.chargePercent != nil }?.chargePercent,
-                segment: segment))
+                segment: segment, chargeSegment: chargeSegment))
         }
         return points
     }
 
+    /// Spacing between time axis ticks: the shortest that gives at most eight.
+    public static func tickStep(span: TimeInterval) -> TimeInterval {
+        let steps: [TimeInterval] = [30, 60, 2 * 60, 5 * 60, 10 * 60, 15 * 60, 30 * 60, 3600, 2 * 3600,
+                                     3 * 3600, 6 * 3600, 86_400, 2 * 86_400, 5 * 86_400]
+        return steps.first { span / $0 <= 8 } ?? 10 * 86_400
+    }
+
     /// Round local times across the domain, leaving out any too close to the
     /// edges for their centred label to fit.
-    public static func ticks(period: PowerPeriod, domain: ClosedRange<Date>,
-                      calendar: Calendar = .current) -> [Date] {
-        let step: TimeInterval = switch period {
-        case .live: 30
-        case .hour: 10 * 60
-        case .day: 3 * 3600
-        case .week: 86_400
-        case .month: 5 * 86_400
-        }
+    public static func ticks(domain: ClosedRange<Date>, calendar: Calendar = .current) -> [Date] {
         let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
         guard span > 0 else { return [] }
+        let step = tickStep(span: span)
         let margin = span * 0.04
         var tick = calendar.startOfDay(for: domain.lowerBound)
         var ticks: [Date] = []
@@ -181,9 +204,9 @@ public enum PowerTimeline {
         return ticks
     }
 
-    /// Sleeps overlapping the period, clipped to it.
-    public static func sleeps(_ sleeps: [DateInterval], period: PowerPeriod, now: Date) -> [DateInterval] {
-        let window = DateInterval(start: now.addingTimeInterval(-period.duration), end: now)
+    /// Sleeps overlapping the domain, clipped to it.
+    public static func sleeps(_ sleeps: [DateInterval], in domain: ClosedRange<Date>) -> [DateInterval] {
+        let window = DateInterval(start: domain.lowerBound, end: domain.upperBound)
         return sleeps.compactMap { $0.intersection(with: window) }.filter { $0.duration > 0 }
     }
 
@@ -203,6 +226,20 @@ public enum PowerTimeline {
             }
         }
         return wakes
+    }
+
+    /// Wakes grouped so that each group's neighbours are at most `gap` apart,
+    /// for marking a run of wakes once where they would crowd together.
+    public static func group(_ wakes: [BriefWake], within gap: TimeInterval) -> [[BriefWake]] {
+        var groups: [[BriefWake]] = []
+        for wake in wakes.sorted(by: { $0.start < $1.start }) {
+            if let last = groups.last?.last, wake.middle.timeIntervalSince(last.middle) <= gap {
+                groups[groups.count - 1].append(wake)
+            } else {
+                groups.append([wake])
+            }
+        }
+        return groups
     }
 }
 
