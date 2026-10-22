@@ -4,8 +4,9 @@
 
 Citrus Battery shows how your Mac's battery is really doing, and your iPhone's and
 iPad's too. You get live charge, health, charge cycles, temperature and power draw.
-It keeps a history of how capacity changes over time, and records everything the
-battery's gauge has logged over its life. It's free, open source, and every feature
+It keeps a history of how capacity changes over time, forecasts when health will
+reach 80%, checks your charger, and records everything the battery's gauge has
+logged over its life. It's free, open source, and every feature
 is included.
 
 > **Version 1.2.** Data availability varies by hardware and OS version.
@@ -75,8 +76,10 @@ Click any screenshot to see it at full resolution.
 - Battery manufacturer and manufacture date. The date comes from what the battery
   records or from its serial number, or is estimated from its operating hours.
 - Power use from the SMC: system usage, its 1-minute peak, adapter input, battery
-  charge or discharge rate, CPU temperature, and a power chart for the last 2 minutes,
-  hour, day, week or month, with the battery's charge level and the times the Mac slept.
+  charge or discharge rate and CPU temperature.
+- Power history: a chart of the last 2 minutes, hour, 24 hours, 7 days or 30 days,
+  with the battery's charge level, the times the Mac slept, and the brief wakes macOS
+  makes while asleep. Hover for exact readings (macOS 14 or later).
 - Charger check: the charger's name and maker, the power it agreed with the Mac, the
   USB-C voltage and current options it offers, and how much it's supplying now. It says
   when the charger is what limits charging speed, or can't keep up and the battery
@@ -85,8 +88,8 @@ Click any screenshot to see it at full resolution.
   third-party charge limiters (AlDente, Battery Toolkit, batt). Where a limit can make
   reported capacity read low, it says so.
 - Cell voltages for each cell in the pack, with a warning when they drift apart.
-- Sleep drain: how much charge the Mac lost while asleep on battery, with a warning
-  when it's unusually high.
+- Sleep drain: how much charge the Mac lost during each sleep of 30 minutes or more
+  on battery, its average, and a warning when it's unusually high.
 - Permanent battery failure flags, decoded.
 - A notice when health falls below 80%, with a link to search for a replacement.
 
@@ -131,29 +134,27 @@ Works on Apple Silicon and Intel Macs.
 
 ## Comparison
 
-How Citrus Battery compares with coconutBattery 4.4, free and Plus:
+How Citrus Battery compares with coconutBattery 4.4. **Paid** marks features that
+need coconutBattery Plus.
 
-| Feature | Citrus Battery | coconutBattery | coconutBattery Plus |
-|---|:-:|:-:|:-:|
-| Price | Free | Free | Paid |
-| Source code | Open (GPL v3) | Closed | Closed |
-| Mac battery: charge, health, cycles, temperature | ✓ | ✓ | ✓ |
-| Battery manufacturer and manufacture date | ✓ | ✓ | ✓ |
-| Live power use | ✓ | ✓ | ✓ |
-| Charge limit detection and advice | ✓ | — | — |
-| iPhone/iPad over USB | ✓ | ✓ | ✓ |
-| iPhone/iPad over Wi-Fi | ✓ | — | ✓ |
-| History with automatic recording, backups | ✓ | ✓ | ✓ |
-| Menu bar status | ✓ | ✓ | ✓ |
-| Custom menu bar text | ✓ | — | ✓ |
-| Notifications | ✓ | — | ✓ |
-| Battery Lifetime Data | ✓ | — | ✓ |
-| Advanced Viewer (SSD health, displays, USB) | ✓ | — | ✓ |
-| Wh units and fast refresh | ✓ | — | ✓ |
-| All 8 temperature units | ✓ | 2 | ✓ |
-| Printable information sheet | — | ✓ | ✓ (custom templates) |
-| Online comparison with other devices | — | ✓ | ✓ |
-| Automatic updates | ✓ | ✓ | ✓ |
+| Feature | Citrus Battery | coconutBattery |
+|---|:-:|:-:|
+| Price | Free | Free, Plus is paid |
+| Source code | Open (GPL v3) | Closed |
+| Mac battery: charge, health, cycles, temperature, manufacture date | ✓ | ✓ |
+| Live power use | ✓ | ✓ |
+| Charge limit detection and advice | ✓ | — |
+| iPhone/iPad over USB | ✓ | ✓ |
+| iPhone/iPad over Wi-Fi | ✓ | Paid |
+| History with automatic recording and backups | ✓ | ✓ |
+| Menu bar status | ✓ | ✓ |
+| Custom menu bar text and notifications | ✓ | Paid |
+| Battery Lifetime Data | ✓ | Paid |
+| Advanced Viewer (SSD health, displays, USB) | ✓ | Paid |
+| Wh units, fast refresh, all 8 temperature units | ✓ | Paid |
+| Printable information sheet | — | ✓ |
+| Online comparison with other devices | — | ✓ |
+| Automatic updates | ✓ | ✓ |
 
 ## Building
 

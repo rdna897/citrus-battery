@@ -37,8 +37,9 @@ Your battery history and preferences are kept.
   80%. The device pages show the same estimate as **Health trend**.
 - **Power history.** The power chart now covers the last 2 minutes, hour, 24 hours,
   7 days or 30 days, with the battery's charge level underneath and the times the Mac
-  was asleep shaded. On macOS 14 or later, hover over the chart for exact readings.
-  History starts when you install this version.
+  was asleep shaded. Dots mark the brief wakes macOS makes while the Mac sleeps. On
+  macOS 14 or later, hover over the chart for exact readings. History starts when you
+  install this version, and until there's enough, the chart starts where it begins.
 - **Clearer battery readings.** When the battery is resting on the charger, the Power
   card says "Not charging (running on adapter)" instead of "Charging with 0.0 W".
 - **Charger check.** A new Charger card shows the charger's name and maker, the power
@@ -47,8 +48,8 @@ Your battery history and preferences are kept.
   or can't keep up and the battery drains while plugged in.
 - **Cell voltages.** The voltage of each cell in the pack, with a warning when they
   drift apart.
-- **Sleep drain.** How much charge the Mac lost while asleep on battery, with a
-  warning when it is unusually high.
+- **Sleep drain.** How much charge the Mac lost during each sleep of 30 minutes or
+  more on battery, with a warning when it is unusually high.
 
 ## Included features
 
