@@ -7,7 +7,8 @@ struct MacDetailView: View {
 
     var body: some View {
         ScrollView {
-            MacDetailContent(trend: history.thisMacSerial.flatMap { history.trends[$0] })
+            MacDetailContent(trend: history.thisMacSerial.flatMap { history.trends[$0] },
+                             sleepSessions: history.sleepSessions)
         }
         .navigationTitle("This Mac")
         .toolbar { AdvancedViewerButton(target: AdvancedTarget.mac) }
@@ -18,6 +19,8 @@ struct MacDetailView: View {
 struct MacDetailContent: View {
     /// This Mac's health trend from its history, if any.
     var trend: HealthTrend?
+    /// Sleeps on battery, newest first.
+    var sleepSessions: [SleepSession] = []
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
@@ -33,6 +36,9 @@ struct MacDetailContent: View {
                     ChargerCard(adapter: adapter, inputWatts: chargerInputWatts(battery),
                                 advice: ChargerCheck.advice(battery: battery, inputWatts: chargerInputWatts(battery),
                                                             systemWatts: monitor.displayedSystemWatts))
+                }
+                if !sleepSessions.isEmpty {
+                    SleepCard(sessions: sleepSessions)
                 }
                 if !battery.failures.messages.isEmpty {
                     failuresSection(battery.failures)
@@ -157,6 +163,7 @@ struct MacDetailContent: View {
                 InfoRow("Design capacity", capacityText(battery.designCapacity, battery))
                 InfoRow("Nominal capacity", capacityText(battery.nominalChargeCapacity, battery))
                 InfoRow("Voltage", battery.voltageMillivolts.map { String(format: "%.2f V", Double($0) / 1000) })
+                InfoRow("Cell voltages", CellBalance.text(battery.cellVoltagesMillivolts), hidesWhenEmpty: true)
                 InfoRow("Amperage", battery.amperageMilliamps.map { "\($0) mA" })
                 InfoRow("Battery serial", battery.serialNumber)
                 InfoRow("Manufacturer", battery.manufacturer, hidesWhenEmpty: true)
@@ -170,6 +177,9 @@ struct MacDetailContent: View {
                 InfoRow("Up since", monitor.macInfo.bootDate.map {
                     $0.formatted(date: .abbreviated, time: .shortened)
                 })
+            }
+            if let advice = CellBalance.advice(battery.cellVoltagesMillivolts) {
+                AdviceBox(advice: advice)
             }
         }
     }
@@ -356,6 +366,35 @@ struct ChargerCard: View {
         let text = String(format: "%.1f W", inputWatts)
         guard let agreed = ChargerCheck.agreedWatts(adapter), agreed > 0 else { return text }
         return "\(text) (\(Int((inputWatts / agreed * 100).rounded()))% of agreed)"
+    }
+}
+
+/// Charge lost while the Mac slept on battery.
+struct SleepCard: View {
+    /// Newest first.
+    let sessions: [SleepSession]
+
+    var body: some View {
+        Card(title: "Sleep", systemImage: "moon.zzz.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                    if let last = sessions.first {
+                        InfoRow("Last sleep", SleepDrain.summary(last))
+                        InfoRow("Slept", "\(last.start.formatted(date: .abbreviated, time: .shortened)) – "
+                            + last.end.formatted(date: .omitted, time: .shortened))
+                    }
+                    if sessions.count > 1 {
+                        let recent = Array(sessions.prefix(10))
+                        InfoRow("Average", SleepDrain.averageLossPerHour(recent).map {
+                            String(format: "%.1f%% an hour over the last %d sleeps", $0 * 100, recent.count)
+                        })
+                    }
+                }
+                if let advice = SleepDrain.advice(sessions) {
+                    AdviceBox(advice: advice)
+                }
+            }
+        }
     }
 }
 

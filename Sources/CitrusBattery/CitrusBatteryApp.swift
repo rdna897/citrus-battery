@@ -298,8 +298,9 @@ enum Snapshot {
             .background(Color(nsColor: .windowBackgroundColor)))
         default:
             let serial = monitor.macInfo.serialNumber ?? monitor.macInfo.modelIdentifier
-            let trend = (try? HistoryStore().entries(deviceSerial: serial)).flatMap { HealthForecast.trend(entries: $0) }
-            view = AnyView(MacDetailContent(trend: trend)
+            let store = try? HistoryStore()
+            let trend = (try? store?.entries(deviceSerial: serial)).flatMap { HealthForecast.trend(entries: $0) }
+            view = AnyView(MacDetailContent(trend: trend, sleepSessions: (try? store?.sleepSessions()) ?? [])
                 .environmentObject(monitor)
                 .environmentObject(Navigator())
                 .frame(width: 720)

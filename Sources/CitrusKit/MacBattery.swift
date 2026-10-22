@@ -85,6 +85,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var designCycleCount: Int?
     public var temperatureCelsius: Double?
     public var voltageMillivolts: Int?
+    /// Voltage of each cell in series (mV); empty when not reported.
+    public var cellVoltagesMillivolts: [Int] = []
     /// Positive while charging, negative while discharging (mA).
     public var amperageMilliamps: Int?
 
@@ -116,6 +118,8 @@ public struct MacBatterySnapshot: Sendable, Equatable {
     public var firstUseDate: Date?
     public var failures: BatteryFailure
     public var powerSource: PowerSourceInfo?
+    /// When the gauge last refreshed these values.
+    public var gaugeUpdated: Date?
 
     // MARK: Derived values
 
@@ -237,6 +241,19 @@ extension MacBatterySnapshot {
         }
 
         voltageMillivolts = Self.int(r["Voltage"]) ?? Self.int(r["AppleRawBatteryVoltage"])
+        // Intel gauges list cells in `CellVoltage`; Apple Silicon has them in the SMC.
+        let registryCells = ((batteryData["CellVoltage"] ?? pack["CellVoltage"]) as? [Any] ?? []).compactMap(Self.int)
+        if registryCells.count > 1 {
+            cellVoltagesMillivolts = registryCells
+        } else if let smc {
+            var cells: [Int] = []
+            for key in SMCKey.cellVoltages {
+                guard let mV = smc.double(key), (2000...5000).contains(mV) else { break }
+                cells.append(Int(mV))
+            }
+            if cells.count > 1 { cellVoltagesMillivolts = cells }
+        }
+        gaugeUpdated = Self.int(r["UpdateTime"]).flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil }
         // Prefer the SMC's live current: on Apple Silicon the registry's
         // InstantAmperage can sit at a placeholder (-1000 mA) while discharging.
         amperageMilliamps = smc?.double(SMCKey.batteryCurrent).map { Int($0) }

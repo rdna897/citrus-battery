@@ -83,6 +83,9 @@ Click any screenshot to see it at full resolution.
 - Charge limits: shows macOS's Charge Limit and Optimized Battery Charging, and spots
   third-party charge limiters (AlDente, Battery Toolkit, batt). Where a limit can make
   reported capacity read low, it says so.
+- Cell voltages for each cell in the pack, with a warning when they drift apart.
+- Sleep drain: how much charge the Mac lost while asleep on battery, with a warning
+  when it's unusually high.
 - Permanent battery failure flags, decoded.
 - A notice when health falls below 80%, with a link to search for a replacement.
 

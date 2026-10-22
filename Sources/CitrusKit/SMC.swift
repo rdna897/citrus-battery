@@ -142,6 +142,8 @@ public enum SMCKey {
     public static let batterySerial = "BMSN"
     /// Battery manufacture week, e.g. "330802" (text; Apple Silicon).
     public static let batteryManufactureWeek = "BMDT"
+    /// Per-cell voltages (mV), as many as the pack has.
+    public static let cellVoltages = ["BC1V", "BC2V", "BC3V", "BC4V"]
     /// CPU temperature candidates, Apple Silicon first.
     public static let cpuTemperature = ["Tp0C", "Tp01", "Tp05", "Tp09", "TC0P", "TC0D", "TC0E"]
 }

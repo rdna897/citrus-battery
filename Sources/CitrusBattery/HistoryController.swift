@@ -1,3 +1,4 @@
+import AppKit
 import CitrusKit
 import Combine
 import Foundation
@@ -13,6 +14,8 @@ final class HistoryController: ObservableObject {
     @Published private(set) var lastError: String?
     /// Health trend per device serial.
     @Published private(set) var trends: [String: HealthTrend] = [:]
+    /// This Mac's sleeps on battery, newest first.
+    @Published private(set) var sleepSessions: [SleepSession] = []
 
     private let store: HistoryStore?
     private weak var monitor: BatteryMonitor?
@@ -21,6 +24,8 @@ final class HistoryController: ObservableObject {
     /// Last Auto-Record attempt per device serial.
     private var lastAutoRecordAttempt: [String: Date] = [:]
     private let launchDate = Date()
+    /// The reading taken as the Mac went to sleep.
+    private var sleepReading: (date: Date, battery: MacBatterySnapshot)?
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -41,6 +46,13 @@ final class HistoryController: ObservableObject {
                     self?.considerAutoRecord(device: device)
                 }
             })
+        // Posted on the main thread; handled synchronously so the reading is
+        // taken before the Mac actually sleeps.
+        let workspace = NSWorkspace.shared.notificationCenter
+        observers.append(workspace.publisher(for: NSWorkspace.willSleepNotification)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.willSleep() } })
+        observers.append(workspace.publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.didWake() } })
     }
 
     var autoRecordNewDevices: Bool {
@@ -113,6 +125,37 @@ final class HistoryController: ObservableObject {
         reload()
     }
 
+    // MARK: Sleep
+
+    private func willSleep() {
+        sleepReading = MacBatteryReader.read().map { (Date(), $0) }
+    }
+
+    /// Measures the sleep once the gauge has refreshed after waking (about once a
+    /// minute); until then it still reports the values from before sleep.
+    private func didWake() {
+        guard let sleep = sleepReading else { return }
+        sleepReading = nil
+        let wokeAt = Date()
+        Task { [weak self] in
+            var after = MacBatteryReader.read()
+            for _ in 0..<24 where (after?.gaugeUpdated ?? wokeAt) < wokeAt {
+                try? await Task.sleep(for: .seconds(5))
+                after = MacBatteryReader.read()
+            }
+            guard let self, let store = self.store, let after, (after.gaugeUpdated ?? wokeAt) >= wokeAt,
+                  let session = SleepSession(before: sleep.battery, after: after,
+                                             sleptAt: sleep.date, wokeAt: wokeAt)
+            else { return }
+            self.perform { try store.insert(session) }
+            self.reloadSleepSessions()
+        }
+    }
+
+    private func reloadSleepSessions() {
+        perform { sleepSessions = try store?.sleepSessions() ?? [] }
+    }
+
     // MARK: Editing
 
     func delete(ids: Set<Int64>) {
@@ -177,6 +220,7 @@ final class HistoryController: ObservableObject {
 
     func reload() {
         guard let store else { return }
+        reloadSleepSessions()
         perform { devices = try store.devices(defaultAutoRecord: autoRecordNewDevices) }
         perform {
             var trends: [String: HealthTrend] = [:]

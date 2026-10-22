@@ -170,6 +170,8 @@ struct IOSDetailContent: View {
                 InfoRow("Design capacity", capacity(battery?.designCapacity, battery), hidesWhenEmpty: true)
                 InfoRow("Voltage", battery?.voltageMillivolts.map { String(format: "%.2f V", Double($0) / 1000) },
                         hidesWhenEmpty: true)
+                InfoRow("Cell voltages", battery.flatMap { CellBalance.text($0.cellVoltagesMillivolts) },
+                        hidesWhenEmpty: true)
             }
         }
     }

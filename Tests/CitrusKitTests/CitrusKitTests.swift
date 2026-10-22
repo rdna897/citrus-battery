@@ -861,3 +861,88 @@ struct FakeSMC: SMCReading {
         #expect(forecast.readingDays == 100)
     }
 }
+
+@Suite struct CellBalanceTests {
+    @Test func cellsFromSMCOnAppleSilicon() {
+        // BC1V–BC3V read from an M4 MacBook Air; they sum to the pack voltage.
+        let smc = FakeSMC(values: [
+            "BC1V": SMCValue(type: "ui16", bytes: [0x45, 0x11]),
+            "BC2V": SMCValue(type: "ui16", bytes: [0x4F, 0x11]),
+            "BC3V": SMCValue(type: "ui16", bytes: [0x51, 0x11]),
+        ])
+        let snapshot = MacBatterySnapshot(registry: SnapshotTests.appleSilicon, smc: smc, powerSource: nil)
+        #expect(snapshot.cellVoltagesMillivolts == [4421, 4431, 4433])
+        #expect(CellBalance.text(snapshot.cellVoltagesMillivolts) == "4.421 · 4.431 · 4.433 V (12 mV apart)")
+        #expect(CellBalance.advice(snapshot.cellVoltagesMillivolts) == nil)
+    }
+
+    @Test func cellsFromIntelRegistry() {
+        var registry = SnapshotTests.appleSilicon
+        registry["BatteryData"] = ["CellVoltage": [3801, 3920, 3795, 0]]
+        let snapshot = MacBatterySnapshot(registry: registry, smc: nil, powerSource: nil)
+        #expect(snapshot.cellVoltagesMillivolts == [3801, 3920, 3795, 0])
+    }
+
+    @Test func warnsAboutALargeGap() {
+        #expect(CellBalance.advice([3801, 3920, 3795])?.message.hasPrefix("The cells differ by 125 mV") == true)
+        #expect(CellBalance.spread([3800]) == nil)
+    }
+}
+
+@Suite struct SleepDrainTests {
+    static let night = ManufactureDateTests.utc.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 23))!
+
+    static func battery(_ capacity: Int, plugged: Bool = false) -> MacBatterySnapshot {
+        var registry = SnapshotTests.appleSilicon
+        registry["ExternalConnected"] = plugged
+        registry["BatteryData"] = ["DesignCapacity": 4629, "FullChargeCapacity": 4500, "RemainingCapacity": capacity]
+        return MacBatterySnapshot(registry: registry, smc: nil, powerSource: nil)
+    }
+
+    @Test func measuresOvernightLoss() throws {
+        let session = try #require(SleepSession(before: Self.battery(4000), after: Self.battery(3865),
+                                                sleptAt: Self.night, wokeAt: Self.night + 8 * 3600))
+        #expect(abs(session.lossFraction - 0.03) < 0.0001)
+        #expect(abs(session.lossPerHour - 0.00375) < 0.0001)
+        #expect(SleepDrain.summary(session) == "Lost 3% in 8 h (0.4% an hour)")
+        #expect(SleepDrain.advice([session]) == nil)
+    }
+
+    @Test func skipsWhatCantBeMeasured() {
+        let wake = Self.night + 8 * 3600
+        // Plugged in at either end, charged in between, or too short.
+        #expect(SleepSession(before: Self.battery(4000, plugged: true), after: Self.battery(3900),
+                             sleptAt: Self.night, wokeAt: wake) == nil)
+        #expect(SleepSession(before: Self.battery(4000), after: Self.battery(3900, plugged: true),
+                             sleptAt: Self.night, wokeAt: wake) == nil)
+        #expect(SleepSession(before: Self.battery(3000), after: Self.battery(3900),
+                             sleptAt: Self.night, wokeAt: wake) == nil)
+        #expect(SleepSession(before: Self.battery(4000), after: Self.battery(3990),
+                             sleptAt: Self.night, wokeAt: Self.night + 600) == nil)
+    }
+
+    @Test func flagsHeavyDrainOnLongSleeps() {
+        let heavy = SleepSession(start: Self.night, end: Self.night + 5 * 3600,
+                                 startCapacity: 4000, endCapacity: 3550, fullChargeCapacity: 4500)
+        #expect(SleepDrain.advice([heavy])?.message.hasPrefix("The last sleep used 2.0% an hour") == true)
+        // The same rate over a short nap isn't reliable enough to warn about.
+        var nap = heavy
+        nap.end = Self.night + 3600
+        nap.endCapacity = 3910
+        #expect(SleepDrain.advice([nap]) == nil)
+        #expect(abs((SleepDrain.averageLossPerHour([heavy, nap]) ?? 0) - 0.12 / 6) < 0.0001)
+    }
+
+    @Test func storeKeepsNewestFirstAndCapsCount() throws {
+        let store = try HistoryStore(url: nil)
+        for index in 0..<(HistoryStore.sleepSessionLimit + 5) {
+            let end = Self.night + Double(index) * 86_400
+            try store.insert(SleepSession(start: end - 8 * 3600, end: end, startCapacity: 4000,
+                                          endCapacity: 3900, fullChargeCapacity: 4500))
+        }
+        let sessions = try store.sleepSessions()
+        #expect(sessions.count == HistoryStore.sleepSessionLimit)
+        #expect(sessions.first?.end == Self.night + Double(HistoryStore.sleepSessionLimit + 4) * 86_400)
+        #expect(sessions.first?.startCapacity == 4000)
+    }
+}

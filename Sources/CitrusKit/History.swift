@@ -151,6 +151,14 @@ public final class HistoryStore: @unchecked Sendable {
                 serial TEXT PRIMARY KEY,
                 auto_record INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS sleep_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start REAL NOT NULL,
+                end REAL NOT NULL,
+                start_capacity INTEGER NOT NULL,
+                end_capacity INTEGER NOT NULL,
+                full_charge_capacity INTEGER NOT NULL
+            );
             """)
         try renameLegacyColumn()
     }
@@ -248,6 +256,53 @@ public final class HistoryStore: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, deviceSerial)
             try step(statement)
+        }
+    }
+
+    // MARK: Sleep
+
+    /// Keeps the store small: older sessions are dropped on insert.
+    public static let sleepSessionLimit = 100
+
+    public func insert(_ session: SleepSession) throws {
+        try locked {
+            let statement = try prepare("""
+                INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity)
+                VALUES (?, ?, ?, ?, ?)
+                """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, session.start.timeIntervalSince1970)
+            bind(statement, 2, session.end.timeIntervalSince1970)
+            bind(statement, 3, session.startCapacity)
+            bind(statement, 4, session.endCapacity)
+            bind(statement, 5, session.fullChargeCapacity)
+            try step(statement)
+            try execute("""
+                DELETE FROM sleep_sessions WHERE id NOT IN
+                    (SELECT id FROM sleep_sessions ORDER BY end DESC LIMIT \(Self.sleepSessionLimit))
+                """)
+        }
+    }
+
+    /// Sleep sessions, newest first.
+    public func sleepSessions() throws -> [SleepSession] {
+        try locked {
+            let statement = try prepare("""
+                SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity
+                FROM sleep_sessions ORDER BY end DESC
+                """)
+            defer { sqlite3_finalize(statement) }
+            var result: [SleepSession] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                result.append(SleepSession(
+                    id: sqlite3_column_int64(statement, 0),
+                    start: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                    end: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+                    startCapacity: int(statement, 3) ?? 0,
+                    endCapacity: int(statement, 4) ?? 0,
+                    fullChargeCapacity: int(statement, 5) ?? 1))
+            }
+            return result
         }
     }
 

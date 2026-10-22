@@ -40,6 +40,11 @@ enum ReadmeScreenshots {
                 batterySerial: "DEMO-BATTERY-001", cycleCount: 18 + index,
                 designCapacity: 4629, fullChargeCapacity: capacity))
         }
+        for (night, (hours, lost)) in [(8.2, 140), (7.5, 120), (9.1, 150)].enumerated() {
+            let end = date.addingTimeInterval(-Double(night) * 86400 - 3 * 3600)
+            try store.insert(SleepSession(start: end.addingTimeInterval(-hours * 3600), end: end,
+                                          startCapacity: 3900, endCapacity: 3900 - lost, fullChargeCapacity: 4518))
+        }
         let history = HistoryController(monitor: monitor, iosDevices: devices, store: store)
         let navigator = Navigator()
 
