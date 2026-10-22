@@ -41,6 +41,16 @@ enum ReadmeScreenshots {
                 batterySerial: "DEMO-BATTERY-001", cycleCount: 18 + index,
                 designCapacity: 4629, fullChargeCapacity: capacity))
         }
+        // A year of iPhone readings, so its page shows a health forecast.
+        for index in 0..<60 {
+            let capacity = 3582 - index * 3 + [0, 6, -4, 3, -5, 1][index % 6]
+            try store.insert(HistoryEntry(
+                date: date.addingTimeInterval(Double(index - 59) * 6 * 86400),
+                deviceType: .iOS, deviceSerial: "DEMO-IPHONE-001",
+                deviceName: "My iPhone", deviceModel: "iPhone17,1", osVersion: "iOS 26.0",
+                batterySerial: nil, cycleCount: 40 + index * 2,
+                designCapacity: 3582, fullChargeCapacity: capacity))
+        }
         for (night, (hours, lost)) in [(8.2, 140), (7.5, 120), (9.1, 150)].enumerated() {
             let end = date.addingTimeInterval(-Double(night) * 86400 - 3 * 3600)
             try store.insert(SleepSession(start: end.addingTimeInterval(-hours * 3600), end: end,
@@ -50,7 +60,7 @@ enum ReadmeScreenshots {
         let history = HistoryController(monitor: monitor, iosDevices: devices, store: store)
         let navigator = Navigator()
 
-        func dependencies<V: View>(_ view: V) -> some View {
+        func dependencies<V: View>(_ view: V, monitor: BatteryMonitor = monitor) -> some View {
             view.environmentObject(monitor)
                 .environmentObject(devices)
                 .environmentObject(history)
@@ -61,6 +71,11 @@ enum ReadmeScreenshots {
         navigator.selection = .thisMac
         try capture(dependencies(ContentView()), title: "This Mac", size: NSSize(width: 1000, height: 780),
                     to: directory.appendingPathComponent("mac-dashboard.png"))
+        // Scrolled down to power history, the charger check and sleep drain, while charging.
+        let charging = makeMonitor(charging: true)
+        try capture(dependencies(ContentView(), monitor: charging), title: "This Mac",
+                    size: NSSize(width: 1000, height: 780), scrolledTo: 330,
+                    to: directory.appendingPathComponent("mac-power.png"))
         navigator.selection = .device("demo-iphone")
         try capture(dependencies(ContentView()), title: "iPhone", size: NSSize(width: 1000, height: 780),
                     to: directory.appendingPathComponent("iphone.png"))
@@ -109,8 +124,8 @@ enum ReadmeScreenshots {
         }
     }
 
-    private static func makeMonitor() -> BatteryMonitor {
-        let battery = MacBatterySnapshot(registry: [
+    private static func makeMonitor(charging: Bool = false) -> BatteryMonitor {
+        var registry: [String: Any] = [
             "AppleRawCurrentCapacity": 3709, "AppleRawMaxCapacity": 4518, "DesignCapacity": 4629,
             "NominalChargeCapacity": 4546, "CycleCount": 107, "DesignCycleCount9C": 1000,
             "Temperature": 2860, "Voltage": 11720, "Amperage": -530,
@@ -118,7 +133,25 @@ enum ReadmeScreenshots {
             "AvgTimeToEmpty": 420, "Serial": "DEMO-BATTERY-001", "Manufacturer": "Sunwoda",
             "DeviceName": "bq40z651", "ManufactureDate": ((2025 - 1980) << 9) | (12 << 5) | 3,
             "LifetimeData": lifetimeData(hours: 7728, cycles: 103),
-        ], smc: nil, powerSource: PowerSourceInfo(chargePercent: 82, timeToEmptyMinutes: 420), date: date)
+        ]
+        if charging {
+            // A 30 W charger running flat out, so the charger check has something to say.
+            registry.merge([
+                "AppleRawCurrentCapacity": 2800, "Amperage": 1820, "IsCharging": true, "ExternalConnected": true,
+                "AvgTimeToFull": 95, "AvgTimeToEmpty": 65535,
+                "AdapterDetails": [
+                    "Watts": 30, "Name": "30W USB-C Power Adapter", "Manufacturer": "Apple Inc.",
+                    "AdapterVoltage": 20000, "Current": 1500, "UsbHvcHvcIndex": 3,
+                    "UsbHvcMenu": [[5000, 3000], [9000, 3000], [15000, 2000], [20000, 1500]].enumerated().map {
+                        ["Index": $0.offset, "MaxVoltage": $0.element[0], "MaxCurrent": $0.element[1]]
+                    },
+                ] as [String: Any],
+                "PowerTelemetryData": ["SystemPowerIn": 28_600],
+            ]) { $1 }
+        }
+        let battery = MacBatterySnapshot(registry: registry, smc: nil, powerSource: charging
+            ? PowerSourceInfo(chargePercent: 62, timeToFullMinutes: 95)
+            : PowerSourceInfo(chargePercent: 82, timeToEmptyMinutes: 420), date: date)
         let now = Date()
         let samples = (0..<61).map { index in
             let t = Double(index)
@@ -130,7 +163,7 @@ enum ReadmeScreenshots {
             modelIdentifier: "Mac16,12", modelNumber: "MW123B/A", serialNumber: "DEMO-MAC-001",
             chip: "Apple M4", osVersion: "macOS 26.0", bootDate: date.addingTimeInterval(-2 * 86400)),
             name: "MacBook Air (13-inch, M4, 2025)",
-            power: PowerReadings(systemWatts: 6.4, adapterWatts: 0, cpuTemperatureCelsius: 38.2),
+            power: PowerReadings(systemWatts: 6.4, adapterWatts: charging ? 28.6 : 0, cpuTemperatureCelsius: 38.2),
             history: samples, limit: ChargeLimitStatus(optimizedChargingEnabled: true))
     }
 
@@ -190,7 +223,12 @@ enum ReadmeScreenshots {
         ])]
     }
 
-    private static func capture<V: View>(_ view: V, title: String, size: NSSize, to url: URL) throws {
+    private static func scrollViews(in view: NSView) -> [NSScrollView] {
+        ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews)
+    }
+
+    private static func capture<V: View>(_ view: V, title: String, size: NSSize, scrolledTo offset: CGFloat = 0,
+                                         to url: URL) throws {
         let controller = NSHostingController(rootView: view.preferredColorScheme(.light))
         if #available(macOS 14.0, *) { controller.sceneBridgingOptions = .all }
         let window = NSWindow(contentViewController: controller)
@@ -204,6 +242,13 @@ enum ReadmeScreenshots {
         window.makeKeyAndOrderFront(nil)
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
         controller.view.layoutSubtreeIfNeeded()
+        if offset > 0, let scrollView = scrollViews(in: controller.view)
+            .max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }) {
+            scrollView.hasVerticalScroller = false
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        }
         window.displayIfNeeded()
         guard let frame = window.contentView?.superview,
               let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,

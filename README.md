@@ -47,6 +47,12 @@ Click any screenshot to see it at full resolution.
 
 <table>
   <tr>
+    <td colspan="2" align="center" valign="top">
+      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample power history for the last 24 hours with the Mac's sleep shaded and brief wakes marked, above a charger check for a 30 W USB-C adapter" width="100%"></a>
+      <p><strong>Power history and charger check</strong><br><sub>See power use over time, when the Mac slept, and whether the charger is holding charging back.</sub></p>
+    </td>
+  </tr>
+  <tr>
     <td width="50%" align="center" valign="top">
       <a href="assets/screenshots/iphone.png"><img src="assets/screenshots/iphone.png" alt="Sample iPhone battery health and charging details, with an iPad also listed in the sidebar" width="100%"></a>
       <p><strong>iPhone &amp; iPad</strong><br><sub>Charge, health and battery details over USB or Wi-Fi.</sub></p>
