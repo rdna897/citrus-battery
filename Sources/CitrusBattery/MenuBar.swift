@@ -401,9 +401,11 @@ private struct PanelWindowShape: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         // AppKit's glass blurs what's behind the window, as Control Center's menus
         // do; SwiftUI's only sees the window's own content.
-        let glass = NSGlassEffectView()
-        glass.cornerRadius = Self.cornerRadius
-        glass.contentView = WindowWatcher()
+        // Looked up at run time so the app also builds with SDKs before macOS 26.
+        guard let type = NSClassFromString("NSGlassEffectView") as? NSView.Type else { return WindowWatcher() }
+        let glass = type.init(frame: .zero)
+        glass.setValue(Self.cornerRadius, forKey: "cornerRadius")
+        glass.setValue(WindowWatcher(), forKey: "contentView")
         return glass
     }
 
