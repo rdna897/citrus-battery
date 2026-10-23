@@ -28,7 +28,7 @@ struct MacDetailContent: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
-    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
+    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -86,7 +86,8 @@ struct MacDetailContent: View {
                     title: "Current charge",
                     fraction: battery.chargeFraction(style: capacityStyle),
                     detail: capacityText(battery.currentCapacity, battery),
-                    tint: .accentColor
+                    tint: .accentColor,
+                    decimals: capacityStyle == .raw || battery.powerSource?.chargePercent == nil
                 )
                 MeterRow(
                     title: "Battery health",
@@ -436,13 +437,15 @@ struct MeterRow: View {
     let fraction: Double?
     let detail: String?
     let tint: Color
+    /// Off for whole-number percentages such as macOS's, which would read "89.0%".
+    var decimals = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
                 Spacer()
-                Text(fraction.map { String(format: "%.1f%%", $0 * 100) } ?? "—")
+                Text(fraction.map { String(format: decimals ? "%.1f%%" : "%.0f%%", $0 * 100) } ?? "—")
                     .font(.body.monospacedDigit().weight(.semibold))
             }
             GeometryReader { proxy in

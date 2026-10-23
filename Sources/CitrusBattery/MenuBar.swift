@@ -29,7 +29,7 @@ struct MenuBarLabel: View {
     @AppStorage(PreferenceKey.batterySymbol) private var symbolPosition = BatterySymbolPosition.left
     @AppStorage(PreferenceKey.batteryPercentInIcon) private var percentInIcon = false
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
-    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
+    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
 
     /// In the menu bar the label follows the menu bar's appearance; elsewhere
     /// (the Settings preview) the app's.
@@ -235,7 +235,7 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
-    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
+    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
     /// Off for documentation captures, which have no desktop behind them to blur.
     var usesGlass = true
 

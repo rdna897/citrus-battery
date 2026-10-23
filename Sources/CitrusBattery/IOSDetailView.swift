@@ -125,7 +125,8 @@ struct IOSDetailContent: View {
         Card(title: "Battery", systemImage: "battery.100percent") {
             VStack(alignment: .leading, spacing: 14) {
                 MeterRow(title: "Current charge", fraction: battery.chargeFraction(style: .apple),
-                         detail: capacity(battery.currentCapacity, battery), tint: .accentColor)
+                         detail: capacity(battery.currentCapacity, battery), tint: .accentColor,
+                         decimals: battery.powerSource?.chargePercent == nil)
                 MeterRow(title: "Battery health", fraction: battery.healthFraction,
                          detail: capacity(battery.fullChargeCapacity, battery).map { "\($0) of " }
                              .map { $0 + (capacity(battery.designCapacity, battery) ?? "—") },

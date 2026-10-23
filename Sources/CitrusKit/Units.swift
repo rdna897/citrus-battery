@@ -82,10 +82,13 @@ public enum CapacityUnit: String, CaseIterable, Identifiable, Sendable {
 
 /// Which charge percentage to show.
 public enum CapacityStyle: String, CaseIterable, Identifiable, Sendable {
-    /// Remaining ÷ full-charge capacity, straight from the battery.
-    case raw
     /// The percentage macOS shows in the menu bar.
     case apple
+    /// Remaining ÷ full-charge capacity, straight from the battery.
+    case raw
+
+    /// What a new install uses, so the app agrees with macOS's menu bar.
+    public static let defaultStyle = CapacityStyle.apple
 
     public var id: String { rawValue }
 

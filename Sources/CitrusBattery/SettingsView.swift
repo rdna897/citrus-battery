@@ -75,7 +75,7 @@ private struct GeneralSettings: View {
 }
 
 private struct BatterySettings: View {
-    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
+    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
     @AppStorage(PreferenceKey.updateInterval) private var updateInterval = UpdateInterval.delayed
 
@@ -116,7 +116,7 @@ private struct MenuBarSettings: View {
     @AppStorage(PreferenceKey.batteryPercentInIcon) private var percentInIcon = false
     @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
-    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
+    @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
     @ViewState private var openAtLogin = LaunchAtLogin.isEnabled
     @ViewState private var loginError: String?
     /// The side to restore when the icon is turned back on.
