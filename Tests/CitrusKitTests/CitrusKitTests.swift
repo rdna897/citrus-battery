@@ -506,6 +506,12 @@ struct FakeSMC: SMCReading {
         let calculating = MenuBarValues(isCalculatingTimeRemaining: true)
         #expect(MenuBarFormatter.render("%TIMEREM%", values: calculating) == "Calculating…")
     }
+
+    @Test func tokensInOrderIgnoringOtherText() {
+        #expect(MenuBarToken.tokens(in: "Bat: %HEALTH% %CHARGE% (%HEALTH%)") == [.health, .charge])
+        #expect(MenuBarToken.tokens(in: "") == [])
+        #expect(MenuBarToken.format([.charge, .timeRemaining]) == "%CHARGE% %TIMEREM%")
+    }
 }
 
 @Suite struct BatteryAlertTests {

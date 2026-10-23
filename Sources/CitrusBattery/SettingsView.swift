@@ -160,22 +160,43 @@ private struct MenuBarSettings: View {
                             .disabled(format == MenuBarToken.defaultFormat)
                     }
                 }
-                LabeledContent("Text") {
-                    TextField("Text", text: $format)
-                        .labelsHidden()
-                        .font(.body.monospaced())
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Shown in the menu bar")
+                    if shownTokens.isEmpty {
+                        Text("Nothing: only the battery icon")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        FlowLayout(spacing: 4) {
+                            ForEach(shownTokens) { token in
+                                Button(token.title) { setShown(shownTokens.filter { $0 != token }) }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .help("Remove from the menu bar")
+                            }
+                        }
+                    }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Insert")
-                    FlowLayout(spacing: 4) {
-                        ForEach(MenuBarToken.allCases) { token in
-                            Button(token.title) { format += (format.isEmpty ? "" : " ") + token.rawValue }
-                                .controlSize(.small)
+                    Text("Available")
+                    if availableTokens.isEmpty {
+                        Text("Everything is shown")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        FlowLayout(spacing: 4) {
+                            ForEach(availableTokens) { token in
+                                Button(token.title) { setShown(shownTokens + [token]) }
+                                    .controlSize(.small)
+                                    .help("Add to the menu bar")
+                            }
                         }
                     }
                 }
             } header: {
                 Text("Menu bar text")
+            } footer: {
+                SettingsNote("Click an item to add it to the menu bar or remove it.")
             }
 
             Section {
@@ -200,6 +221,13 @@ private struct MenuBarSettings: View {
             }
         }
         .onAppear { openAtLogin = LaunchAtLogin.isEnabled }
+    }
+
+    private var shownTokens: [MenuBarToken] { MenuBarToken.tokens(in: format) }
+    private var availableTokens: [MenuBarToken] { MenuBarToken.allCases.filter { !shownTokens.contains($0) } }
+
+    private func setShown(_ tokens: [MenuBarToken]) {
+        withAnimation(.easeInOut(duration: 0.15)) { format = MenuBarToken.format(tokens) }
     }
 }
 
@@ -335,7 +363,7 @@ private struct UpdateSettings: View {
                     set: { enabled in updater.setAutomaticallyDownloadsUpdates(enabled) }))
                     .disabled(!updater.automaticallyChecksForUpdates)
             } footer: {
-                SettingsNote("Checks GitHub daily. With automatic installation on, updates download in the background and install when Citrus Battery quits; otherwise each update is shown first.")
+                SettingsNote("Checks GitHub once a day. Automatic updates install when you quit Citrus Battery.")
             }
             .disabled(!updater.isAvailable)
         }

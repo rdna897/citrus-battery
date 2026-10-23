@@ -29,6 +29,19 @@ public enum MenuBarToken: String, CaseIterable, Identifiable, Sendable {
     }
 
     public static let defaultFormat = MenuBarToken.charge.rawValue
+
+    /// The tokens in `format`, in order of first appearance; other text is ignored.
+    public static func tokens(in format: String) -> [MenuBarToken] {
+        allCases
+            .compactMap { token in format.range(of: token.rawValue).map { (token, $0.lowerBound) } }
+            .sorted { $0.1 < $1.1 }
+            .map(\.0)
+    }
+
+    /// The format string showing `tokens`, separated by spaces.
+    public static func format(_ tokens: [MenuBarToken]) -> String {
+        tokens.map(\.rawValue).joined(separator: " ")
+    }
 }
 
 /// Values available to the menu bar text.
