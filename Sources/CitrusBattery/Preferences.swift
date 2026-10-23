@@ -33,7 +33,6 @@ enum BatterySymbolPosition: String, CaseIterable, Identifiable {
     case none, left, right
 
     var id: String { rawValue }
-    var name: String { rawValue.capitalized }
 }
 
 extension UserDefaults {

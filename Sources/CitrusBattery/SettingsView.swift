@@ -119,6 +119,8 @@ private struct MenuBarSettings: View {
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
     @ViewState private var openAtLogin = LaunchAtLogin.isEnabled
     @ViewState private var loginError: String?
+    /// The side to restore when the icon is turned back on.
+    @ViewState private var lastIconSide = BatterySymbolPosition.left
 
     var body: some View {
         Form {
@@ -200,18 +202,28 @@ private struct MenuBarSettings: View {
             }
 
             Section {
-                Picker("Position", selection: $symbolPosition) {
-                    ForEach(BatterySymbolPosition.allCases) { Text($0.name).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                if SystemBatteryIcon.isAvailable {
-                    Toggle("Show percentage inside the icon", isOn: $percentInIcon)
-                        .disabled(symbolPosition == .none && !format.isEmpty)
-                        .help("Writes the charge inside the icon, as macOS does. "
-                            + "Remove %CHARGE% from the menu bar text to show it only there.")
+                Toggle("Show battery icon", isOn: showIcon)
+                    .disabled(shownTokens.isEmpty)
+                if showsIcon {
+                    if SystemBatteryIcon.isAvailable {
+                        Toggle("Show percentage inside the icon", isOn: $percentInIcon)
+                            .help("Writes the charge inside the icon, as macOS does. "
+                                + "Remove Charge % from the menu bar text to show it only there.")
+                    }
+                    if !shownTokens.isEmpty {
+                        Picker("Position", selection: iconSide) {
+                            Text("Left of the text").tag(BatterySymbolPosition.left)
+                            Text("Right of the text").tag(BatterySymbolPosition.right)
+                        }
+                        .pickerStyle(.segmented)
+                    }
                 }
             } header: {
                 Text("Battery icon")
+            } footer: {
+                if shownTokens.isEmpty {
+                    SettingsNote("The icon always shows while there's no menu bar text.")
+                }
             }
 
             Section {
@@ -224,6 +236,25 @@ private struct MenuBarSettings: View {
     }
 
     private var shownTokens: [MenuBarToken] { MenuBarToken.tokens(in: format) }
+
+    /// With no text the menu bar shows the icon whatever the setting says.
+    private var showsIcon: Bool { symbolPosition != .none || shownTokens.isEmpty }
+
+    private var showIcon: Binding<Bool> {
+        Binding(get: { showsIcon }, set: { show in
+            if show {
+                symbolPosition = lastIconSide
+            } else {
+                lastIconSide = iconSide.wrappedValue
+                symbolPosition = .none
+            }
+        })
+    }
+
+    /// Left or right of the text; `.none` reads as left so the picker always has a choice.
+    private var iconSide: Binding<BatterySymbolPosition> {
+        Binding(get: { symbolPosition == .right ? .right : .left }, set: { symbolPosition = $0 })
+    }
     private var availableTokens: [MenuBarToken] { MenuBarToken.allCases.filter { !shownTokens.contains($0) } }
 
     private func setShown(_ tokens: [MenuBarToken]) {
