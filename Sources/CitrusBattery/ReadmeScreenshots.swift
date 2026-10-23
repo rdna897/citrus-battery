@@ -86,6 +86,66 @@ enum ReadmeScreenshots {
                     to: directory.appendingPathComponent("lifetime.png"))
         try capture(dependencies(AdvancedViewer(sampleSections: advancedSections)), title: "Advanced Viewer",
                     size: NSSize(width: 920, height: 690), to: directory.appendingPathComponent("advanced.png"))
+        try renderMenuBar(dependencies(MenuBarScene()).environmentObject(AppUpdater()),
+                          to: directory.appendingPathComponent("menu-bar.png"))
+    }
+
+    /// The status item, with macOS's own battery icon, and its panel open below.
+    private struct MenuBarScene: View {
+        var body: some View {
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 16) {
+                    MenuBarLabel(inMenuBar: false)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.1), in: Capsule())
+                    Image(systemName: "wifi")
+                    Image(systemName: "switch.2")
+                    Text("Wed 21 Oct  10:41")
+                }
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .trailing)
+                .background(Color.white.opacity(0.55))
+                MenuBarPanel(usesGlass: false)
+                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(white: 0.965))
+                        .shadow(color: .black.opacity(0.18), radius: 18, y: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.08)))
+                    .padding(.trailing, 150)
+            }
+            .frame(width: 640)
+            .padding(.bottom, 30)
+            .environment(\.colorScheme, .light)
+        }
+    }
+
+    /// Renders a SwiftUI scene straight onto the backdrop, without a window frame.
+    private static func renderMenuBar<V: View>(_ view: V, to url: URL) throws {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let cgImage = renderer.cgImage else { throw CocoaError(.fileWriteUnknown) }
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: CGFloat(cgImage.width) / 2,
+                                                          height: CGFloat(cgImage.height) / 2))
+        let size = NSSize(width: 1200, height: 960)
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
+            pixelsHigh: Int(size.height * 2), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+            isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.current!.cgContext.scaleBy(x: 2, y: 2)
+        NSGradient(starting: NSColor(red: 0.93, green: 0.96, blue: 0.89, alpha: 1),
+                   ending: NSColor(red: 0.99, green: 0.97, blue: 0.90, alpha: 1))!
+            .draw(in: NSRect(origin: .zero, size: size), angle: -35)
+        let fit = min((size.width - 120) / image.size.width, (size.height - 80) / image.size.height)
+        let drawn = NSSize(width: image.size.width * fit, height: image.size.height * fit)
+        image.draw(in: NSRect(x: (size.width - drawn.width) / 2, y: (size.height - drawn.height) / 2,
+                              width: drawn.width, height: drawn.height))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+        try png.write(to: url)
+        print("Rendered \(url.lastPathComponent)")
     }
 
     /// A week of power readings: working days with a charge in the morning and

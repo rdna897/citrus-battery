@@ -207,6 +207,54 @@ public enum PowerTimeline {
         return line
     }
 
+    /// Width of each bar: the shortest round slot that keeps about a hundred bars.
+    public static func barWidth(span: TimeInterval) -> TimeInterval {
+        let widths: [TimeInterval] = [60, 5 * 60, 15 * 60, 30 * 60, 3600, 2 * 3600, 4 * 3600, 8 * 3600]
+        return widths.first { span / $0 <= 100 } ?? 8 * 3600
+    }
+
+    /// Bars across the domain in slots of `barWidth`, counted from local midnight.
+    /// Power is averaged over the time the Mac was awake or asleep in the slot, so
+    /// a brief wake in a sleep is a small bar; charge carries on through sleep.
+    public static func bars(_ minutes: [PowerMinute], in domain: ClosedRange<Date>, sleeps: [DateInterval],
+                            calendar: Calendar = .current) -> [PowerBar] {
+        let width = barWidth(span: domain.upperBound.timeIntervalSince(domain.lowerBound))
+        let line = chargeLine(minutes, in: domain, sleeps: sleeps)
+        let recorded = minutes.filter { domain.contains($0.start) }.sorted { $0.start < $1.start }
+        let midnight = calendar.startOfDay(for: domain.lowerBound)
+        var start = midnight.addingTimeInterval(
+            (domain.lowerBound.timeIntervalSince(midnight) / width).rounded(.down) * width)
+        var bars: [PowerBar] = []
+        while start < domain.upperBound {
+            let end = start.addingTimeInterval(width)
+            let slot = DateInterval(start: start, end: end)
+            let inSlot = recorded.filter { $0.start >= start && $0.start < end }
+            var watts: Double?
+            if !inSlot.isEmpty {
+                let asleep = sleeps.compactMap { $0.intersection(with: slot)?.duration }.reduce(0, +) / 60
+                let awake = Double(inSlot.count)
+                watts = inSlot.map(\.averageWatts).reduce(0, +) / max(awake + asleep, awake)
+            }
+            let adapterMinutes = inSlot.filter(\.onAdapter).count
+            bars.append(PowerBar(start: start, end: end, watts: watts,
+                                 chargePercent: charge(in: slot, line: line),
+                                 onAdapter: !inSlot.isEmpty && adapterMinutes * 2 >= inSlot.count))
+            start = end
+        }
+        return bars.filter { $0.watts != nil || $0.chargePercent != nil }
+    }
+
+    /// The charge at the end of a slot: its last point, or between the points
+    /// either side when the line passes through it without one.
+    private static func charge(in slot: DateInterval, line: [ChargePoint]) -> Double? {
+        if let last = line.last(where: { $0.date >= slot.start && $0.date < slot.end }) { return last.percent }
+        guard let after = line.firstIndex(where: { $0.date >= slot.end }), after > 0 else { return nil }
+        let before = line[after - 1], next = line[after]
+        guard before.segment == next.segment else { return nil }
+        let share = slot.end.timeIntervalSince(before.date) / next.date.timeIntervalSince(before.date)
+        return before.percent + (next.percent - before.percent) * share
+    }
+
     /// Spacing between time axis ticks: the shortest that gives at most eight.
     public static func tickStep(span: TimeInterval) -> TimeInterval {
         let steps: [TimeInterval] = [30, 60, 2 * 60, 5 * 60, 10 * 60, 15 * 60, 30 * 60, 3600, 2 * 3600,
@@ -272,6 +320,21 @@ public enum PowerTimeline {
         }
         return groups
     }
+}
+
+/// One bar of the history charts.
+public struct PowerBar: Sendable, Equatable, Identifiable {
+    public var start: Date
+    public var end: Date
+    /// Average system power over the slot (W), if the app recorded any of it.
+    public var watts: Double?
+    /// Battery charge at the end of the slot (%).
+    public var chargePercent: Double?
+    /// Most of the recorded slot was on the power adapter.
+    public var onAdapter: Bool
+
+    public var id: Date { start }
+    public var middle: Date { start.addingTimeInterval(end.timeIntervalSince(start) / 2) }
 }
 
 /// A brief wake during sleep. Times are to the minute: the wake itself

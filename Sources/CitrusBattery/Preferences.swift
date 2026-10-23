@@ -14,8 +14,9 @@ enum PreferenceKey {
     static let showInMenuBar = "showInMenuBar"
     static let menuBarFormat = "menuBarFormat"
     static let batterySymbol = "batterySymbol"
-    static let menuBarAccentColour = "menuBarAccentColour"
+    static let batteryPercentInIcon = "batteryPercentInIcon"
     static let showDockIcon = "showDockIcon"
+    static let startHiddenAtLogin = "startHiddenAtLogin"
 
     static let alertLowChargeEnabled = "alertLowChargeEnabled"
     static let alertLowChargePercent = "alertLowChargePercent"

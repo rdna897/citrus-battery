@@ -333,7 +333,7 @@ private struct MenuBarSnapshotLabel: View {
     @EnvironmentObject private var monitor: BatteryMonitor
 
     var body: some View {
-        Text(Image(systemName: MenuBarLabel.symbolName(for: monitor.battery))) + Text(" ")
+        Text(MenuBarLabel.icon(for: monitor.battery)) + Text(" ")
             + Text(MenuBarFormatter.render(format, values: monitor.menuBarValues(
                 temperatureUnit: .celsius, capacityStyle: .raw)))
     }

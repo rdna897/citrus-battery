@@ -1021,6 +1021,25 @@ struct FakeSMC: SMCReading {
         #expect(PowerTimeline.chargeLine(minutes, in: edge...(edge + 3600), sleeps: []).first?.percent == 70)
     }
 
+    @Test func averagesBarsOverSleepAndCarriesChargeThroughIt() {
+        // As above: awake at 80%, asleep with a brief wake at 70%, then awake at 60%.
+        let minutes = (0..<60).map { Self.minute($0) } + [Self.minute(120, charge: 70)]
+            + (180..<240).map { Self.minute($0, charge: 60) }
+        let sleep = DateInterval(start: Self.start + 59.5 * 60, end: Self.start + 180.5 * 60)
+        let domain = Self.start...(Self.start + 240 * 60)
+        #expect(PowerTimeline.barWidth(span: 240 * 60) == 300)
+        let bars = PowerTimeline.bars(minutes, in: domain, sleeps: [sleep], calendar: ManufactureDateTests.utc)
+        #expect(bars.count == 48)
+        #expect(bars.first?.watts == 6)
+        // The brief wake's minute is spread over its five-minute slot.
+        let wake = bars.first { $0.start == Self.start + 120 * 60 }
+        #expect(wake?.watts == 1)
+        // Asleep without readings: no power, but the charge carries on.
+        let asleep = bars.first { $0.start == Self.start + 90 * 60 }
+        #expect(asleep?.watts == nil)
+        #expect(asleep?.chargePercent.map { $0 > 70 && $0 < 80 } == true)
+    }
+
     @Test func trimsTheDomainToWhereReadingsStart() {
         let now = Self.start + 3 * 3600
         let minutes = (60..<180).map { Self.minute($0) }

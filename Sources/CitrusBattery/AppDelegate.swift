@@ -10,6 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyDockIconPreference()
+        if UserDefaults.standard.startHiddenAtLogin, Self.launchedAtLogin {
+            // SwiftUI opens the main window just after launch; hide it once it's there.
+            for delay in [0, 0.5, 1.5] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { Self.hideWindows() }
+            }
+        }
         updater.start()
         if ProcessInfo.processInfo.environment["CITRUS_GUI_SMOKE_TEST"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
@@ -67,6 +73,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("no status item button found")
     }
 
+    /// Whether macOS opened the app as a login item (at startup or login).
+    private static var launchedAtLogin: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CITRUS_DEBUG_LOGIN_LAUNCH"] != nil { return true }
+        #endif
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.eventID == kAEOpenApplication,
+           event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
+            return true
+        }
+        // Login items don't always say so; just after startup, assume it was one.
+        return LaunchAtLogin.isEnabled && ProcessInfo.processInfo.systemUptime < 300
+    }
+
+    /// Leaves the app in the menu bar, or minimised in the Dock without one.
+    private static func hideWindows() {
+        let showInMenuBar = UserDefaults.standard.showInMenuBar
+        for window in NSApp.windows where window.isVisible && window.level == .normal && window.canBecomeMain {
+            if showInMenuBar {
+                window.close()
+            } else if !window.isMiniaturized {
+                window.miniaturize(nil)
+            }
+        }
+    }
+
     /// Closing the window leaves the menu bar item running.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         !UserDefaults.standard.showInMenuBar
@@ -85,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension UserDefaults {
     var showInMenuBar: Bool { object(forKey: PreferenceKey.showInMenuBar) as? Bool ?? true }
     var showDockIcon: Bool { object(forKey: PreferenceKey.showDockIcon) as? Bool ?? true }
+    var startHiddenAtLogin: Bool { object(forKey: PreferenceKey.startHiddenAtLogin) as? Bool ?? true }
 }
 
 /// Open at login via SMAppService (macOS 13+). Only works from an app bundle.

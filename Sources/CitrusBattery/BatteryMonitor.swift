@@ -19,11 +19,13 @@ final class BatteryMonitor: ObservableObject {
     /// System power over the last two minutes, for the chart.
     @Published private(set) var powerHistory: [PowerSample] = []
     @Published private(set) var chargeLimit: ChargeLimitStatus?
+    @Published private(set) var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     private var timer: Timer?
     private var chargeLimitTimer: Timer?
     private var interval: UpdateInterval
     private var defaultsObserver: AnyCancellable?
+    private var powerStateObserver: AnyCancellable?
 
     /// How far back "Delayed" mode averages power values.
     private static let smoothingWindow: TimeInterval = 30
@@ -39,6 +41,13 @@ final class BatteryMonitor: ObservableObject {
             .publisher(for: UserDefaults.didChangeNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateIntervalIfChanged() }
+        powerStateObserver = NotificationCenter.default
+            .publisher(for: .NSProcessInfoPowerStateDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CITRUS_DEBUG_ICON_COLOUR"] == "lowpower" { isLowPowerModeEnabled = true }
+        #endif
 
         Task.detached(priority: .utility) {
             let name = MacInfo.marketingName()
@@ -62,6 +71,7 @@ final class BatteryMonitor: ObservableObject {
         self.powerHistory = history
         self.chargeLimit = limit
         self.interval = .delayed
+        self.isLowPowerModeEnabled = false
     }
     #endif
 

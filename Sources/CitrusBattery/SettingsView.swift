@@ -110,9 +110,10 @@ private struct MenuBarSettings: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.showInMenuBar) private var showInMenuBar = true
     @AppStorage(PreferenceKey.showDockIcon) private var showDockIcon = true
+    @AppStorage(PreferenceKey.startHiddenAtLogin) private var startHiddenAtLogin = true
     @AppStorage(PreferenceKey.menuBarFormat) private var format = MenuBarToken.defaultFormat
     @AppStorage(PreferenceKey.batterySymbol) private var symbolPosition = BatterySymbolPosition.left
-    @AppStorage(PreferenceKey.menuBarAccentColour) private var useAccentColour = false
+    @AppStorage(PreferenceKey.batteryPercentInIcon) private var percentInIcon = false
     @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.raw
@@ -132,6 +133,11 @@ private struct MenuBarSettings: View {
                         loginError = "Couldn't change the login item: \(error.localizedDescription)"
                     }
                 }
+            Toggle(showInMenuBar ? "Start in the menu bar, without opening the window"
+                                 : "Start with the window minimised", isOn: $startHiddenAtLogin)
+                .disabled(!openAtLogin)
+                .padding(.leading, 20)
+                .help("Applies when Citrus Battery opens at login, such as after a restart.")
             if let loginError {
                 Text(loginError).font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -157,7 +163,7 @@ private struct MenuBarSettings: View {
             }
             LabeledContent("Preview:") {
                 HStack {
-                    MenuBarLabel()
+                    MenuBarLabel(inMenuBar: false)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
@@ -169,7 +175,12 @@ private struct MenuBarSettings: View {
                 ForEach(BatterySymbolPosition.allCases) { Text($0.name).tag($0) }
             }
             .pickerStyle(.segmented)
-            Toggle("Use the macOS accent colour for charge and health bars", isOn: $useAccentColour)
+            if SystemBatteryIcon.isAvailable {
+                Toggle("Show percentage inside the battery icon", isOn: $percentInIcon)
+                    .disabled(symbolPosition == .none && !format.isEmpty)
+                    .help("Writes the charge inside the icon, as macOS does. "
+                        + "Remove %CHARGE% from the menu bar text to show it only there.")
+            }
             Toggle("Show connected iPhones and iPads in the menu bar panel", isOn: $showDevices)
         }
         .onAppear { openAtLogin = LaunchAtLogin.isEnabled }
