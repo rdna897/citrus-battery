@@ -9,7 +9,7 @@ reach 80%, checks your charger, and records everything the battery's gauge has
 logged over its life. It's free, open source, and every feature
 is included.
 
-> **Version 1.2.** Data availability varies by hardware and OS version.
+> **Version 1.2.1.** Data availability varies by hardware and OS version.
 
 <p align="center">
   <a href="assets/screenshots/mac-dashboard.png">
@@ -48,8 +48,14 @@ Click any screenshot to see it at full resolution.
 <table>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample power history for the last 24 hours with the Mac's sleep shaded and brief wakes marked, above a charger check for a 30 W USB-C adapter" width="100%"></a>
-      <p><strong>Power history and charger check</strong><br><sub>See power use over time, when the Mac slept, and whether the charger is holding charging back.</sub></p>
+      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample battery level and power use for the last 24 hours as bar charts, with the Mac's sleep on a strip underneath, above a charger check for a 30 W USB-C adapter" width="100%"></a>
+      <p><strong>Power history and charger check</strong><br><sub>See battery level and power use over time, when the Mac slept, and whether the charger is holding charging back.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <a href="assets/screenshots/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="The menu bar with macOS's own battery icon and the charge, and below it Citrus Battery's menu with charge and health bars, battery details, an iPhone and iPad, and commands" width="70%"></a>
+      <p><strong>Menu bar</strong><br><sub>macOS's own battery icon, and a menu styled like Control Center's.</sub></p>
     </td>
   </tr>
   <tr>
@@ -83,9 +89,10 @@ Click any screenshot to see it at full resolution.
   records or from its serial number, or is estimated from its operating hours.
 - Power use from the SMC: system usage, its 1-minute peak, adapter input, battery
   charge or discharge rate and CPU temperature.
-- Power history: a chart of the last 2 minutes, hour, 24 hours, 7 days or 30 days,
-  with the battery's charge level, the times the Mac slept, and the brief wakes macOS
-  makes while asleep. Hover for exact readings (macOS 14 or later).
+- Power history: live power over the last 2 minutes, and battery level and power use
+  as bars over the last hour, 24 hours, 7 days or 30 days, like the charts in macOS's
+  Battery settings. A strip shows when the Mac slept, and brief wakes during sleep show
+  as small power bars. Hover for exact readings (macOS 14 or later).
 - Charger check: the charger's name and maker, the power it agreed with the Mac, the
   USB-C voltage and current options it offers, and how much it's supplying now. It says
   when the charger is what limits charging speed, or can't keep up and the battery
@@ -123,9 +130,15 @@ Click any screenshot to see it at full resolution.
   USB devices. Everything can be copied as tab-separated text.
 
 **Menu bar and notifications**
+- macOS's own battery icon, drawn by macOS: filled to the exact charge, with a bolt
+  while charging and a plug when charging is paused, yellow in Low Power Mode and red
+  when nearly empty. Optionally with the percentage inside, as macOS can show it.
 - Status text you can customise with placeholders (`%CHARGE%`, `%CC%`, `%CUSTEMP%`,
-  `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`, `%CHARGER%`), plus a
-  panel showing your Mac and devices. Can open at login, with an optional
+  `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`, `%CHARGER%`).
+- A menu styled like Control Center's, with glass on macOS 26 or later: charge and
+  health, battery details, Low Power Mode and **Charging On Hold** status, your iPhones
+  and iPads, and a shortcut to macOS's Battery settings.
+- Can open at login, starting in the menu bar without its window, with an optional
   menu-bar-only mode.
 - Notifications for low charge, low time remaining, fully charged, and an iPhone/iPad
   reaching a chosen level.
