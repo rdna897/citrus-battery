@@ -49,8 +49,12 @@ public enum MacBatteryReader {
                let max = description[kIOPSMaxCapacityKey] as? Int, max > 0 {
                 result.chargePercent = Int((Double(current) / Double(max) * 100).rounded())
             }
-            result.timeToEmptyMinutes = (description[kIOPSTimeToEmptyKey] as? Int).flatMap { $0 > 0 ? $0 : nil }
-            result.timeToFullMinutes = (description[kIOPSTimeToFullChargeKey] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            let toEmpty = description[kIOPSTimeToEmptyKey] as? Int
+            let toFull = description[kIOPSTimeToFullChargeKey] as? Int
+            result.timeToEmptyMinutes = toEmpty.flatMap { $0 > 0 ? $0 : nil }
+            result.timeToFullMinutes = toFull.flatMap { $0 > 0 ? $0 : nil }
+            result.isCalculatingTimeToEmpty = toEmpty == -1
+            result.isCalculatingTimeToFull = toFull == -1
             result.healthDescription = description["BatteryHealthCondition"] as? String
                 ?? description[kIOPSBatteryHealthKey] as? String
             return result

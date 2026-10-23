@@ -56,14 +56,21 @@ public struct PowerSourceInfo: Sendable, Equatable {
     public var chargePercent: Int?
     public var timeToEmptyMinutes: Int?
     public var timeToFullMinutes: Int?
+    /// macOS reports -1 while it is still working out an estimate, as just
+    /// after plugging in or unplugging.
+    public var isCalculatingTimeToEmpty: Bool
+    public var isCalculatingTimeToFull: Bool
     /// "Good", "Fair", "Poor", or a condition such as "Service Recommended".
     public var healthDescription: String?
 
     public init(chargePercent: Int? = nil, timeToEmptyMinutes: Int? = nil,
-                timeToFullMinutes: Int? = nil, healthDescription: String? = nil) {
+                timeToFullMinutes: Int? = nil, isCalculatingTimeToEmpty: Bool = false,
+                isCalculatingTimeToFull: Bool = false, healthDescription: String? = nil) {
         self.chargePercent = chargePercent
         self.timeToEmptyMinutes = timeToEmptyMinutes
         self.timeToFullMinutes = timeToFullMinutes
+        self.isCalculatingTimeToEmpty = isCalculatingTimeToEmpty
+        self.isCalculatingTimeToFull = isCalculatingTimeToFull
         self.healthDescription = healthDescription
     }
 }
@@ -188,8 +195,17 @@ public struct MacBatterySnapshot: Sendable, Equatable {
             && (notChargingReason ?? 0) & Self.pausedBySystemChargingSettings != 0
     }
 
+    /// macOS is still working out the time until empty or full, whichever applies.
+    public var isCalculatingTimeRemaining: Bool {
+        if isCharging { return powerSource?.isCalculatingTimeToFull ?? false }
+        if isExternalPowerConnected { return false }
+        return powerSource?.isCalculatingTimeToEmpty ?? false
+    }
+
     /// Minutes until empty or full, whichever applies, preferring macOS's estimate.
+    /// Nil while macOS is calculating: the battery's own average can be stale then.
     public var timeRemainingMinutes: Int? {
+        if isCalculatingTimeRemaining { return nil }
         if isCharging {
             return powerSource?.timeToFullMinutes ?? timeToFullMinutes
         }

@@ -236,7 +236,7 @@ enum DiagnosticDump {
         print("Voltage \(b.voltageMillivolts.map(String.init) ?? "-") mV  amperage \(b.amperageMilliamps.map(String.init) ?? "-") mA"
             + "  battery power \(fmt(b.batteryPowerWatts)) W")
         print("Charging \(b.isCharging)  external \(b.isExternalPowerConnected)  full \(b.isFullyCharged)"
-            + "  remaining \(b.timeRemainingMinutes.map(DurationFormat.hoursMinutes) ?? "-")")
+            + "  remaining \(b.isCalculatingTimeRemaining ? "calculating" : b.timeRemainingMinutes.map(DurationFormat.hoursMinutes) ?? "-")")
         print("Adapter: \(b.adapter?.watts.map { "\($0) W" } ?? "-") \(b.adapter?.name ?? "")")
         print("Serial: \(b.serialNumber ?? "-")  gauge: \(b.gasGaugeName ?? "-")  maker: \(b.manufacturer ?? "-")")
         let made = b.manufactureDate.map { "\($0.year ?? 0)-\($0.month ?? 0)-\($0.day ?? 0)" }

@@ -119,6 +119,36 @@ struct FakeSMC: SMCReading {
         #expect(snapshot.chargeFraction(style: .apple) == 0.22)
         #expect(abs((snapshot.chargeFraction(style: .raw) ?? 0) - 973.0 / 4556) < 0.0001)
     }
+
+    @Test func timeRemainingPrefersMacOSAndFallsBackToTheBattery() {
+        let macOS = MacBatterySnapshot(registry: Self.appleSilicon, smc: nil,
+                                       powerSource: PowerSourceInfo(timeToFullMinutes: 95))
+        #expect(macOS.timeRemainingMinutes == 95)
+        let battery = MacBatterySnapshot(registry: Self.appleSilicon, smc: nil, powerSource: PowerSourceInfo())
+        #expect(battery.timeRemainingMinutes == 269)
+        #expect(!battery.isCalculatingTimeRemaining)
+    }
+
+    @Test func calculatingHidesTheBatteryAverage() {
+        let charging = MacBatterySnapshot(registry: Self.appleSilicon, smc: nil,
+                                          powerSource: PowerSourceInfo(isCalculatingTimeToFull: true))
+        #expect(charging.isCalculatingTimeRemaining)
+        #expect(charging.timeRemainingMinutes == nil)
+
+        var unplugged = Self.appleSilicon
+        unplugged["IsCharging"] = false
+        unplugged["ExternalConnected"] = false
+        unplugged["AvgTimeToEmpty"] = 300
+        let discharging = MacBatterySnapshot(registry: unplugged, smc: nil,
+                                             powerSource: PowerSourceInfo(isCalculatingTimeToEmpty: true))
+        #expect(discharging.isCalculatingTimeRemaining)
+        #expect(discharging.timeRemainingMinutes == nil)
+        // Only the estimate for the current direction counts.
+        let other = MacBatterySnapshot(registry: unplugged, smc: nil,
+                                       powerSource: PowerSourceInfo(isCalculatingTimeToFull: true))
+        #expect(!other.isCalculatingTimeRemaining)
+        #expect(other.timeRemainingMinutes == 300)
+    }
 }
 
 @Suite struct BatteryOriginTests {
@@ -473,6 +503,8 @@ struct FakeSMC: SMCReading {
         values.isFullyCharged = true
         #expect(MenuBarFormatter.render("%TIMEREM% %STATUS%", values: values) == "Full Full")
         #expect(MenuBarFormatter.render("Bat: %CHARGE%", values: Self.values) == "Bat: 76%")
+        let calculating = MenuBarValues(isCalculatingTimeRemaining: true)
+        #expect(MenuBarFormatter.render("%TIMEREM%", values: calculating) == "Calculating…")
     }
 }
 
@@ -1129,3 +1161,4 @@ struct FakeSMC: SMCReading {
         #expect(spans.map { PowerTimeline.tickStep(span: $0) } == steps)
     }
 }
+

@@ -38,6 +38,7 @@ public struct MenuBarValues: Sendable, Equatable {
     public var temperatureText: String?
     public var healthFraction: Double?
     public var timeRemainingMinutes: Int?
+    public var isCalculatingTimeRemaining: Bool
     public var isCharging: Bool
     public var isExternalPowerConnected: Bool
     public var isFullyCharged: Bool
@@ -46,7 +47,7 @@ public struct MenuBarValues: Sendable, Equatable {
     public var chargerWatts: Int?
 
     public init(chargeFraction: Double? = nil, cycleCount: Int? = nil, temperatureText: String? = nil,
-                healthFraction: Double? = nil, timeRemainingMinutes: Int? = nil, isCharging: Bool = false,
+                healthFraction: Double? = nil, timeRemainingMinutes: Int? = nil, isCalculatingTimeRemaining: Bool = false, isCharging: Bool = false,
                 isExternalPowerConnected: Bool = false, isFullyCharged: Bool = false,
                 systemWatts: Double? = nil, batteryWatts: Double? = nil, chargerWatts: Int? = nil) {
         self.chargeFraction = chargeFraction
@@ -54,6 +55,7 @@ public struct MenuBarValues: Sendable, Equatable {
         self.temperatureText = temperatureText
         self.healthFraction = healthFraction
         self.timeRemainingMinutes = timeRemainingMinutes
+        self.isCalculatingTimeRemaining = isCalculatingTimeRemaining
         self.isCharging = isCharging
         self.isExternalPowerConnected = isExternalPowerConnected
         self.isFullyCharged = isFullyCharged
@@ -85,6 +87,7 @@ public enum MenuBarFormatter {
             return v.healthFraction.map { "\(Int(($0 * 100).rounded()))%" }
         case .timeRemaining:
             if v.isFullyCharged { return "Full" }
+            if v.isCalculatingTimeRemaining { return "Calculating…" }
             return v.timeRemainingMinutes.map(DurationFormat.hoursMinutes)
         case .status:
             if v.isFullyCharged { return "Full" }

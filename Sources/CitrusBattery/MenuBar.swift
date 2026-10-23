@@ -11,6 +11,7 @@ extension BatteryMonitor {
             temperatureText: battery?.temperatureCelsius.map(temperatureUnit.format(celsius:)),
             healthFraction: battery?.healthFraction,
             timeRemainingMinutes: battery?.timeRemainingMinutes,
+            isCalculatingTimeRemaining: battery?.isCalculatingTimeRemaining ?? false,
             isCharging: battery?.isCharging ?? false,
             isExternalPowerConnected: battery?.isExternalPowerConnected ?? false,
             isFullyCharged: battery?.isFullyCharged ?? false,
@@ -333,6 +334,8 @@ struct MenuBarPanel: View {
             } else if battery.isFullyCharged {
                 parts.append("Fully Charged")
             }
+        } else if battery.isCalculatingTimeRemaining {
+            parts.append(battery.isCharging ? "Calculating time until full…" : "Calculating time left…")
         } else if let minutes = battery.timeRemainingMinutes {
             parts.append("\(DurationFormat.readable(minutes)) \(battery.isCharging ? "until full" : "left")")
         }

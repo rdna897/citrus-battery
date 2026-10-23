@@ -99,7 +99,8 @@ struct MacDetailContent: View {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     InfoRow("Status", statusText(battery))
                     InfoRow(battery.isCharging ? "Time until full" : "Time until empty",
-                            battery.timeRemainingMinutes.map(DurationFormat.readable))
+                            battery.isCalculatingTimeRemaining
+                                ? "Calculating…" : battery.timeRemainingMinutes.map(DurationFormat.readable))
                     InfoRow("Charge cycles", cyclesText(battery))
                     InfoRow("Health trend", trend?.summary, hidesWhenEmpty: true)
                     InfoRow("Temperature", battery.temperatureCelsius.map(temperatureUnit.format(celsius:)))
