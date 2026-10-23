@@ -93,6 +93,45 @@ public struct PowerReadings: Sendable, Equatable {
     }
 }
 
+/// Cumulative CPU time across all cores, in scheduler ticks, from
+/// `HOST_CPU_LOAD_INFO`. Usage is the share of busy ticks between two readings.
+public struct CPUTicks: Sendable, Equatable {
+    public var user: UInt64
+    public var system: UInt64
+    public var idle: UInt64
+    public var nice: UInt64
+
+    public init(user: UInt64, system: UInt64, idle: UInt64, nice: UInt64) {
+        self.user = user
+        self.system = system
+        self.idle = idle
+        self.nice = nice
+    }
+
+    /// Busy share of all cores since `earlier` (0–1), or nil if no time passed.
+    public func usage(since earlier: CPUTicks) -> Double? {
+        // The kernel's counters are 32-bit and wrap; `&-` keeps the difference right.
+        func delta(_ now: UInt64, _ then: UInt64) -> UInt64 { UInt64(UInt32(truncatingIfNeeded: now &- then)) }
+        let busy = delta(user, earlier.user) + delta(system, earlier.system) + delta(nice, earlier.nice)
+        let total = busy + delta(idle, earlier.idle)
+        guard total > 0 else { return nil }
+        return Double(busy) / Double(total)
+    }
+
+    public static func read() -> CPUTicks? {
+        var info = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.stride / MemoryLayout<integer_t>.stride)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        let ticks = info.cpu_ticks
+        return CPUTicks(user: UInt64(ticks.0), system: UInt64(ticks.1), idle: UInt64(ticks.2), nice: UInt64(ticks.3))
+    }
+}
+
 /// Static facts about this Mac.
 public struct MacInfo: Sendable, Equatable {
     /// e.g. "Mac16,12".

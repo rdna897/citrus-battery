@@ -98,6 +98,7 @@ struct MacDetailContent: View {
                 Divider()
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     InfoRow("Status", statusText(battery))
+                    InfoRow("Low Power Mode", monitor.isLowPowerModeEnabled ? "On" : "Off")
                     InfoRow(battery.isCharging ? "Time until full" : "Time until empty",
                             battery.isCalculatingTimeRemaining
                                 ? "Calculating…" : battery.timeRemainingMinutes.map(DurationFormat.readable))
@@ -131,6 +132,7 @@ struct MacDetailContent: View {
                         InfoRow(flow.title, flow.value)
                     }
                     InfoRow("From adapter", watts(monitor.power.adapterWatts))
+                    InfoRow("CPU usage", monitor.cpuUsage.map { String(format: "%.0f%%", $0 * 100) })
                     InfoRow("CPU temperature", monitor.power.cpuTemperatureCelsius.map(temperatureUnit.format(celsius:)))
                 }
                 if monitor.power.systemWatts != nil {

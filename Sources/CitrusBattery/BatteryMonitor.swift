@@ -20,6 +20,9 @@ final class BatteryMonitor: ObservableObject {
     @Published private(set) var powerHistory: [PowerSample] = []
     @Published private(set) var chargeLimit: ChargeLimitStatus?
     @Published private(set) var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+    /// Share of all CPU cores in use since the previous refresh (0–1).
+    @Published private(set) var cpuUsage: Double?
+    private var lastCPUTicks: CPUTicks?
 
     private var timer: Timer?
     private var chargeLimitTimer: Timer?
@@ -102,6 +105,10 @@ final class BatteryMonitor: ObservableObject {
     func refresh() {
         battery = MacBatteryReader.read()
         power = PowerReadings.read()
+        if let ticks = CPUTicks.read() {
+            if let lastCPUTicks { cpuUsage = ticks.usage(since: lastCPUTicks) }
+            lastCPUTicks = ticks
+        }
 
         let now = Date()
         if let watts = power.systemWatts {

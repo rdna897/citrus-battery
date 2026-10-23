@@ -1162,3 +1162,22 @@ struct FakeSMC: SMCReading {
     }
 }
 
+@Suite struct CPUUsageTests {
+    @Test func busyShareOfTicksBetweenReadings() {
+        let earlier = CPUTicks(user: 1000, system: 500, idle: 8000, nice: 0)
+        let later = CPUTicks(user: 1300, system: 600, idle: 8600, nice: 0)
+        #expect(later.usage(since: earlier) == 0.4)
+        #expect(later.usage(since: later) == nil)
+    }
+
+    @Test func survivesCounterWrap() {
+        let earlier = CPUTicks(user: UInt64(UInt32.max) - 99, system: 0, idle: 0, nice: 0)
+        let later = CPUTicks(user: 100, system: 0, idle: 200, nice: 0)
+        #expect(later.usage(since: earlier) == 0.5)
+    }
+
+    @Test func readsThisMac() throws {
+        let ticks = try #require(CPUTicks.read())
+        #expect(ticks.user + ticks.system + ticks.idle > 0)
+    }
+}
