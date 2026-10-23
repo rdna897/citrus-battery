@@ -236,6 +236,7 @@ struct MenuBarPanel: View {
     @AppStorage(PreferenceKey.showDevicesInMenuBar) private var showDevices = true
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
+    @StateObject private var energy = SignificantEnergyMonitor()
     /// Off for documentation captures, which have no desktop behind them to blur.
     var usesGlass = true
 
@@ -259,6 +260,18 @@ struct MenuBarPanel: View {
                 }
                 if monitor.isLowPowerModeEnabled {
                     ValueRow("Low Power Mode", "On")
+                }
+                if let apps = energy.apps {
+                    MenuSeparator()
+                    if apps.isEmpty {
+                        Text("No Apps Using Significant Energy")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .menuRowPadding(vertical: 4)
+                    } else {
+                        MenuSectionHeader("Using Significant Energy")
+                        ForEach(apps) { EnergyAppRow(app: $0) }
+                    }
                 }
             } else {
                 Text(monitor.marketingName ?? "This Mac")
@@ -301,6 +314,8 @@ struct MenuBarPanel: View {
         .padding(.vertical, 8)
         .frame(width: 300)
         .controlCentreBackground(usesGlass)
+        .onAppear { energy.start() }
+        .onDisappear { energy.stop() }
     }
 
     /// The Mac's name, with what's powering it underneath.
@@ -633,6 +648,54 @@ private struct DevicePanelRow: View {
         case .locked: return "Locked"
         case .unavailable: return "–"
         }
+    }
+}
+
+/// Polls macOS's "Using Significant Energy" list while the panel is open, as
+/// macOS's own battery menu does.
+@MainActor
+final class SignificantEnergyMonitor: ObservableObject {
+    /// Nil until the first reading, or when macOS doesn't provide the list.
+    @Published private(set) var apps: [SignificantEnergyApp]?
+    private var timer: Timer?
+
+    func start() {
+        refresh()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func refresh() {
+        Task.detached(priority: .utility) {
+            let apps = SignificantEnergy.read()
+            await MainActor.run { [weak self] in self?.apps = apps }
+        }
+    }
+}
+
+/// One app in "Using Significant Energy": its icon and name, as in macOS's menu.
+private struct EnergyAppRow: View {
+    let app: SignificantEnergyApp
+
+    var body: some View {
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)
+        HStack(spacing: 8) {
+            Image(nsImage: url.map { NSWorkspace.shared.icon(forFile: $0.path) }
+                ?? NSWorkspace.shared.icon(for: .applicationBundle))
+                .resizable()
+                .frame(width: 18, height: 18)
+            Text(app.displayName ?? url.map { FileManager.default.displayName(atPath: $0.path) }
+                .map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 } ?? app.bundleIdentifier)
+                .lineLimit(1)
+        }
+        .menuRowPadding()
     }
 }
 

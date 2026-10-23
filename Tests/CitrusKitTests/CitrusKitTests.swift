@@ -1187,3 +1187,28 @@ struct FakeSMC: SMCReading {
         #expect(ticks.user + ticks.system + ticks.idle > 0)
     }
 }
+
+@Suite struct SignificantEnergyTests {
+    @Test func usesTheResponsibleAppAndSortsByImpact() {
+        let report: [String: Any] = [
+            "bundle_identifiers": ["com.google.Chrome.helper", "com.t3tools.t3code", "com.google.Chrome"],
+            "responsible_bundle_identifiers": ["com.google.Chrome", "", ""],
+            "display_names": ["", "T3 Code", ""],
+            "energy_impacts": ["70000.5", NSNumber(value: 80000), "20000"],
+            "report_duration": 120,
+        ]
+        let apps = SignificantEnergy.apps(from: report)
+        #expect(apps.map(\.bundleIdentifier) == ["com.google.Chrome", "com.t3tools.t3code"])
+        #expect(apps[0].energyImpact == 90000.5)
+        #expect(apps[0].displayName == nil)
+        #expect(apps[1].displayName == "T3 Code")
+    }
+
+    @Test func emptyReport() {
+        #expect(SignificantEnergy.apps(from: ["bundle_identifiers": [String]()]).isEmpty)
+    }
+
+    @Test func readsThisMac() {
+        #expect(SignificantEnergy.read() != nil)
+    }
+}
