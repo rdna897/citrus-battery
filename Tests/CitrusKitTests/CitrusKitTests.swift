@@ -1100,7 +1100,7 @@ struct FakeSMC: SMCReading {
 
     @Test func batteryFlowLabels() {
         var battery = ChargerCheckTests.battery(adapter: ChargerCheckTests.appleCharger, amperage: 0)
-        #expect(BatteryFlow.describe(battery) == ("Battery", "Not charging (running on adapter)"))
+        #expect(BatteryFlow.describe(battery) == ("Battery", "Not charging"))
         battery.isExternalPowerConnected = false
         #expect(BatteryFlow.describe(battery) == ("Battery", "Idle"))
         battery.amperageMilliamps = 1000

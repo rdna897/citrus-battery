@@ -356,7 +356,7 @@ public enum BatteryFlow {
     public static func describe(_ battery: MacBatterySnapshot) -> (title: String, value: String?) {
         guard let watts = battery.batteryPowerWatts else { return ("Battery", nil) }
         if abs(watts) < restingWatts {
-            return ("Battery", battery.isExternalPowerConnected ? "Not charging (running on adapter)" : "Idle")
+            return ("Battery", battery.isExternalPowerConnected ? "Not charging" : "Idle")
         }
         return (watts > 0 ? "Charging with" : "Discharging with", String(format: "%.1f W", abs(watts)))
     }
