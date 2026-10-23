@@ -450,6 +450,24 @@ private struct PanelWindowShape: NSViewRepresentable {
             frame.layer?.cornerCurve = .continuous
             frame.layer?.masksToBounds = true
             PanelWindowShape.roundShadow(of: window)
+            fitWindow()
+        }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            DispatchQueue.main.async { [weak self] in self?.fitWindow() }
+        }
+
+        /// The window keeps its size when the panel's content changes while it's
+        /// closed (a row appearing or going), and its shadow would show the
+        /// difference; fit it to the glass, keeping the top under the menu bar.
+        private func fitWindow() {
+            guard let window, bounds.height > 0, abs(window.frame.height - bounds.height) > 0.5 else { return }
+            var frame = window.frame
+            frame.origin.y += frame.height - bounds.height
+            frame.size.height = bounds.height
+            window.setFrame(frame, display: true)
+            window.invalidateShadow()
         }
     }
 }
