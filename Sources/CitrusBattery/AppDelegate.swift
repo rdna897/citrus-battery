@@ -32,12 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
             }
         }
-        if ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "settings" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }
-        }
         if ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "panel" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Self.clickStatusItem() }
         }

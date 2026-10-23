@@ -1,24 +1,58 @@
 import CitrusKit
 import SwiftUI
 
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
-            UpdateSettings()
-                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
-            BatterySettings()
-                .tabItem { Label("Battery", systemImage: "battery.100percent") }
-            MenuBarSettings()
-                .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
-            NotificationSettings()
-                .tabItem { Label("Notifications", systemImage: "bell.badge") }
-            HistorySettings()
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+/// The sections of the Settings page.
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case general, battery, menuBar, notifications, history, updates
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .battery: "Battery"
+        case .menuBar: "Menu Bar"
+        case .notifications: "Notifications"
+        case .history: "History"
+        case .updates: "Updates"
         }
-        .frame(width: 540)
-        .padding(20)
+    }
+}
+
+/// Settings, shown as a page of the main window.
+struct SettingsView: View {
+    @EnvironmentObject private var navigator: Navigator
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Section", selection: $navigator.settingsSection) {
+                ForEach(SettingsSection.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .padding(.vertical, 14)
+            Divider()
+            ScrollView {
+                section
+                    .frame(maxWidth: 540)
+                    .padding(24)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle("Settings")
+    }
+
+    @ViewBuilder
+    private var section: some View {
+        switch navigator.settingsSection {
+        case .general: GeneralSettings()
+        case .battery: BatterySettings()
+        case .menuBar: MenuBarSettings()
+        case .notifications: NotificationSettings()
+        case .history: HistorySettings()
+        case .updates: UpdateSettings()
+        }
     }
 }
 
@@ -100,8 +134,8 @@ private struct HistorySettings: View {
             Toggle("Auto-record new devices", isOn: $autoRecordNewDevices)
                 .onChange(of: autoRecordNewDevices) { _ in history.reload() }
             SettingsNote("Auto-Record saves a device's battery data about once an hour, skipping readings that "
-                + "haven't changed since earlier the same day. You can turn it off per device in the "
-                + "History window.")
+                + "haven't changed since earlier the same day. You can turn it off per device on the "
+                + "History page.")
         }
     }
 }

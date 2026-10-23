@@ -51,9 +51,13 @@ extension UserDefaults {
 /// Which part of the main window is showing; shared so the menu bar can open History.
 @MainActor
 final class Navigator: ObservableObject {
-    // CITRUS_DEBUG_OPEN=history starts on History (used for UI captures).
-    @Published var selection: SidebarItem? =
-        ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] == "history" ? .history : .thisMac
+    // CITRUS_DEBUG_OPEN=history or settings starts on that page (used for UI captures).
+    @Published var selection: SidebarItem? = switch ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] {
+    case "history": .history
+    case "settings": .settings
+    default: .thisMac
+    }
+    @Published var settingsSection = SettingsSection.general
     /// Device shown in the Battery Lifetime Data window: `AdvancedTarget.mac` or a UDID.
     @Published var lifetimeTarget: String = AdvancedTarget.mac
 }

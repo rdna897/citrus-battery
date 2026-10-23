@@ -4,6 +4,7 @@ enum SidebarItem: Hashable {
     case thisMac
     case device(String)
     case history
+    case settings
 }
 
 struct ContentView: View {
@@ -46,6 +47,7 @@ struct ContentView: View {
                         .tag(SidebarItem.history)
                 }
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) { settingsFooter }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
             detail
@@ -62,7 +64,27 @@ struct ContentView: View {
                 IOSDetailView(udid: udid)
             case .history:
                 HistoryView()
+            case .settings:
+                SettingsView()
             }
+    }
+
+    /// Settings pinned under the list, selected like the pages above it.
+    private var settingsFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button { navigator.selection = .settings } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                    .background(navigator.selection == .settings ? Color.primary.opacity(0.1) : .clear,
+                                in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+        }
     }
 
     /// citrusbattery:// links (see CitrusURL).

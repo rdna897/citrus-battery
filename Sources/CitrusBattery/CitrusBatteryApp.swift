@@ -152,6 +152,8 @@ struct CitrusBatteryApp: App {
                 .environmentObject(history)
                 .environmentObject(navigator)
                 .environmentObject(iosDevices)
+                .environmentObject(notifier)
+                .environmentObject(appDelegate.updater)
                 .frame(minWidth: 760, minHeight: 520)
         }
         // Sidebar (240) + content column (720 + padding): the header and the whole
@@ -175,14 +177,6 @@ struct CitrusBatteryApp: App {
                 .environmentObject(navigator)
         }
         .defaultSize(width: 680, height: 560)
-
-        Settings {
-            SettingsView()
-                .environmentObject(monitor)
-                .environmentObject(history)
-                .environmentObject(notifier)
-                .environmentObject(appDelegate.updater)
-        }
 
         MenuBarExtra(isInserted: $showInMenuBar) {
             MenuBarPanel()

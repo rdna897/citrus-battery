@@ -146,7 +146,7 @@ Click any screenshot to see it at full resolution.
 **Settings**
 - 8 temperature units, mAh or Wh, raw or macOS-style percentages, and a smoothed or
   fast (1-second) refresh.
-- `citrusbattery://` links (`mac`, `history`, `device/<udid>`, `advanced[/<udid>]`,
+- `citrusbattery://` links (`mac`, `history`, `settings`, `device/<udid>`, `advanced[/<udid>]`,
   `lifetime[/<udid>]`) and command-line output (`--dump`, `--ios`, `--advanced`).
 
 Works on Apple Silicon and Intel Macs.

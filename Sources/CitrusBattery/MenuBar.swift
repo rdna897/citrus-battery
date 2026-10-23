@@ -287,7 +287,7 @@ struct MenuBarPanel: View {
                 closePanel()
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!)
             }
-            SettingsPanelButton(beforeOpening: closePanel)
+            PanelButton("Settings…") { show(.settings) }
             PanelButton("Check for Updates…") {
                 closePanel()
                 updater.checkForUpdates()
@@ -583,39 +583,6 @@ private extension View {
         frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, vertical)
-    }
-}
-
-/// "Settings…" in the panel. macOS 14+ provides `openSettings`; the older
-/// `showSettingsWindow:` action only works while a window is key, which isn't
-/// the case once the panel has closed.
-private struct SettingsPanelButton: View {
-    let beforeOpening: () -> Void
-
-    var body: some View {
-        if #available(macOS 14, *) {
-            Modern(beforeOpening: beforeOpening)
-        } else {
-            PanelButton("Settings…") {
-                beforeOpening()
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }
-        }
-    }
-
-    @available(macOS 14, *)
-    private struct Modern: View {
-        let beforeOpening: () -> Void
-        @Environment(\.openSettings) private var openSettings
-
-        var body: some View {
-            PanelButton("Settings…") {
-                beforeOpening()
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            }
-        }
     }
 }
 

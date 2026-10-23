@@ -15,6 +15,10 @@ struct AppCommands: Commands {
             Button("About Citrus Battery") { AboutCitrusBattery.show() }
             CheckForUpdatesButton(updater: updater)
         }
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { show(.settings) }
+                .keyboardShortcut(",")
+        }
         CommandGroup(after: .toolbar) {
             Button("Refresh") { monitor.refresh() }
                 .keyboardShortcut("r")
@@ -86,7 +90,7 @@ enum AboutCitrusBattery {
     }
 }
 
-/// citrusbattery://mac, //history, //device/<udid>, //advanced[/<udid>], //lifetime[/<udid>]
+/// citrusbattery://mac, //history, //settings, //device/<udid>, //advanced[/<udid>], //lifetime[/<udid>]
 enum CitrusURL {
     enum Route: Equatable {
         case select(SidebarItem)
@@ -100,6 +104,7 @@ enum CitrusURL {
         switch url.host?.lowercased() {
         case "mac", nil: return .select(.thisMac)
         case "history": return .select(.history)
+        case "settings": return .select(.settings)
         case "device": return id.map { .select(.device($0)) }
         case "advanced": return .advanced(id ?? AdvancedTarget.mac)
         case "lifetime": return .lifetime(id ?? AdvancedTarget.mac)
