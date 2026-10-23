@@ -19,7 +19,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
-/// Settings, shown as a page of the main window.
+/// Settings, shown as a page of the main window: a section picker above
+/// grouped forms like System Settings'.
 struct SettingsView: View {
     @EnvironmentObject private var navigator: Navigator
 
@@ -31,15 +32,14 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            .padding(.vertical, 14)
-            Divider()
-            ScrollView {
-                section
-                    .frame(maxWidth: 540)
-                    .padding(24)
-                    .frame(maxWidth: .infinity)
-            }
+            .padding(.top, 20)
+            section
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .toggleStyle(.switch)
         }
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity)
         .navigationTitle("Settings")
     }
 
@@ -56,47 +56,20 @@ struct SettingsView: View {
     }
 }
 
-private struct UpdateSettings: View {
-    @EnvironmentObject private var updater: AppUpdater
-
-    var body: some View {
-        Form {
-            LabeledContent("Installed version:") {
-                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development build")
-            }
-            Toggle("Automatically check for updates", isOn: Binding(
-                get: { updater.automaticallyChecksForUpdates },
-                set: { enabled in updater.setAutomaticallyChecksForUpdates(enabled) }))
-            Toggle("Automatically download and install updates", isOn: Binding(
-                get: { updater.automaticallyDownloadsUpdates },
-                set: { enabled in updater.setAutomaticallyDownloadsUpdates(enabled) }))
-                .disabled(!updater.automaticallyChecksForUpdates)
-            SettingsNote("Checks GitHub daily. With automatic installation on, updates download in the background and install when Citrus Battery quits; otherwise each update is shown first.")
-            if let date = updater.lastUpdateCheckDate {
-                LabeledContent("Last checked:") {
-                    Text(date, format: .dateTime.month().day().hour().minute())
-                }
-            }
-            CheckForUpdatesButton(updater: updater)
-            if !updater.isAvailable {
-                SettingsNote("Updates are available in the packaged application. Download it from GitHub Releases.")
-            }
-        }
-        .disabled(!updater.isAvailable)
-    }
-}
-
 private struct GeneralSettings: View {
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
 
     var body: some View {
         Form {
-            Picker("Temperature unit:", selection: $temperatureUnit) {
-                ForEach(TemperatureUnit.allCases) { unit in
-                    Text("\(unit.name) (\(unit.symbol))").tag(unit)
+            Section {
+                Picker("Temperature unit", selection: $temperatureUnit) {
+                    ForEach(TemperatureUnit.allCases) { unit in
+                        Text("\(unit.name) (\(unit.symbol))").tag(unit)
+                    }
                 }
+            } footer: {
+                SettingsNote("Used everywhere Citrus Battery shows a temperature.")
             }
-            SettingsNote("Used everywhere Citrus Battery shows a temperature.")
         }
     }
 }
@@ -108,34 +81,27 @@ private struct BatterySettings: View {
 
     var body: some View {
         Form {
-            Picker("Charge percentage:", selection: $capacityStyle) {
-                ForEach(CapacityStyle.allCases) { Text($0.name).tag($0) }
+            Section {
+                Picker("Charge percentage", selection: $capacityStyle) {
+                    ForEach(CapacityStyle.allCases) { Text($0.name).tag($0) }
+                }
+                Picker("Capacity units", selection: $capacityUnit) {
+                    ForEach(CapacityUnit.allCases) { Text($0.name).tag($0) }
+                }
+            } header: {
+                Text("Display")
+            } footer: {
+                SettingsNote("Raw values come straight from the battery; macOS style matches the menu bar. Affects the live view only.")
             }
-            SettingsNote("Raw values come straight from the battery; macOS style matches the menu bar. Affects the live view only.")
-
-            Picker("Capacity units:", selection: $capacityUnit) {
-                ForEach(CapacityUnit.allCases) { Text($0.name).tag($0) }
+            Section {
+                Picker("Update interval", selection: $updateInterval) {
+                    ForEach(UpdateInterval.allCases) { Text($0.name).tag($0) }
+                }
+            } header: {
+                Text("Refresh")
+            } footer: {
+                SettingsNote("Delayed refreshes every 5 seconds and averages power over 30 seconds.")
             }
-
-            Picker("Update interval:", selection: $updateInterval) {
-                ForEach(UpdateInterval.allCases) { Text($0.name).tag($0) }
-            }
-            SettingsNote("Delayed refreshes every 5 seconds and averages power over 30 seconds.")
-        }
-    }
-}
-
-private struct HistorySettings: View {
-    @EnvironmentObject private var history: HistoryController
-    @AppStorage(PreferenceKey.autosaveNewDevices) private var autoRecordNewDevices = true
-
-    var body: some View {
-        Form {
-            Toggle("Auto-record new devices", isOn: $autoRecordNewDevices)
-                .onChange(of: autoRecordNewDevices) { _ in history.reload() }
-            SettingsNote("Auto-Record saves a device's battery data about once an hour, skipping readings that "
-                + "haven't changed since earlier the same day. You can turn it off per device on the "
-                + "History page.")
         }
     }
 }
@@ -156,66 +122,82 @@ private struct MenuBarSettings: View {
 
     var body: some View {
         Form {
-            Toggle("Show Citrus Battery in the menu bar", isOn: $showInMenuBar)
-            Toggle("Open at login", isOn: $openAtLogin)
-                .onChange(of: openAtLogin) { enabled in
-                    do {
-                        try LaunchAtLogin.set(enabled)
-                        loginError = LaunchAtLogin.needsApproval
-                            ? "Allow Citrus Battery in System Settings → General → Login Items." : nil
-                    } catch {
-                        loginError = "Couldn't change the login item: \(error.localizedDescription)"
+            Section {
+                Toggle("Show Citrus Battery in the menu bar", isOn: $showInMenuBar)
+                Toggle("Show Dock icon", isOn: $showDockIcon)
+                    .disabled(!showInMenuBar)
+                    .help("Hide the Dock icon to run Citrus Battery from the menu bar only.")
+                Toggle("Open at login", isOn: $openAtLogin)
+                    .onChange(of: openAtLogin) { enabled in
+                        do {
+                            try LaunchAtLogin.set(enabled)
+                            loginError = LaunchAtLogin.needsApproval
+                                ? "Allow Citrus Battery in System Settings → General → Login Items." : nil
+                        } catch {
+                            loginError = "Couldn't change the login item: \(error.localizedDescription)"
+                        }
+                    }
+                if openAtLogin {
+                    Toggle(showInMenuBar ? "Start in the menu bar, without opening the window"
+                                         : "Start with the window minimised", isOn: $startHiddenAtLogin)
+                        .help("Applies when Citrus Battery opens at login, such as after a restart.")
+                }
+            } footer: {
+                if let loginError {
+                    Text(loginError).font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section {
+                LabeledContent("Preview") {
+                    HStack(spacing: 10) {
+                        MenuBarLabel(inMenuBar: false)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                        Button("Use Default") { format = MenuBarToken.defaultFormat }
+                            .disabled(format == MenuBarToken.defaultFormat)
                     }
                 }
-            Toggle(showInMenuBar ? "Start in the menu bar, without opening the window"
-                                 : "Start with the window minimised", isOn: $startHiddenAtLogin)
-                .disabled(!openAtLogin)
-                .padding(.leading, 20)
-                .help("Applies when Citrus Battery opens at login, such as after a restart.")
-            if let loginError {
-                Text(loginError).font(.caption).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Toggle("Show Dock icon", isOn: $showDockIcon)
-                .disabled(!showInMenuBar)
-                .help("Hide the Dock icon to run Citrus Battery from the menu bar only.")
-
-            Divider()
-
-            LabeledContent("Menu bar text:") {
-                TextField("Menu bar text", text: $format)
-                    .labelsHidden()
-                    .font(.body.monospaced())
-            }
-            LabeledContent("Insert:") {
-                FlowLayout(spacing: 4) {
-                    ForEach(MenuBarToken.allCases) { token in
-                        Button(token.title) { format += (format.isEmpty ? "" : " ") + token.rawValue }
-                            .controlSize(.small)
+                LabeledContent("Text") {
+                    TextField("Text", text: $format)
+                        .labelsHidden()
+                        .font(.body.monospaced())
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Insert")
+                    FlowLayout(spacing: 4) {
+                        ForEach(MenuBarToken.allCases) { token in
+                            Button(token.title) { format += (format.isEmpty ? "" : " ") + token.rawValue }
+                                .controlSize(.small)
+                        }
                     }
                 }
+            } header: {
+                Text("Menu bar text")
             }
-            LabeledContent("Preview:") {
-                HStack {
-                    MenuBarLabel(inMenuBar: false)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-                    Spacer()
-                    Button("Use Default") { format = MenuBarToken.defaultFormat }
+
+            Section {
+                Picker("Position", selection: $symbolPosition) {
+                    ForEach(BatterySymbolPosition.allCases) { Text($0.name).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                if SystemBatteryIcon.isAvailable {
+                    Toggle("Show percentage inside the icon", isOn: $percentInIcon)
+                        .disabled(symbolPosition == .none && !format.isEmpty)
+                        .help("Writes the charge inside the icon, as macOS does. "
+                            + "Remove %CHARGE% from the menu bar text to show it only there.")
+                }
+            } header: {
+                Text("Battery icon")
             }
-            Picker("Battery icon:", selection: $symbolPosition) {
-                ForEach(BatterySymbolPosition.allCases) { Text($0.name).tag($0) }
+
+            Section {
+                Toggle("Show connected iPhones and iPads", isOn: $showDevices)
+            } header: {
+                Text("Menu bar panel")
             }
-            .pickerStyle(.segmented)
-            if SystemBatteryIcon.isAvailable {
-                Toggle("Show percentage inside the battery icon", isOn: $percentInIcon)
-                    .disabled(symbolPosition == .none && !format.isEmpty)
-                    .help("Writes the charge inside the icon, as macOS does. "
-                        + "Remove %CHARGE% from the menu bar text to show it only there.")
-            }
-            Toggle("Show connected iPhones and iPads in the menu bar panel", isOn: $showDevices)
         }
         .onAppear { openAtLogin = LaunchAtLogin.isEnabled }
     }
@@ -233,71 +215,130 @@ private struct NotificationSettings: View {
 
     var body: some View {
         Form {
-            Text("This Mac").font(.headline)
-            HStack {
-                Toggle("Notify when the charge falls below", isOn: $lowChargeEnabled)
-                Picker("", selection: $lowChargePercent) {
-                    ForEach([5, 10, 15, 20, 25, 30, 40, 50], id: \.self) { Text("\($0)%").tag($0) }
+            if !notifier.isAvailable || notifier.authorization == .denied {
+                Section {
+                    Text(notifier.isAvailable
+                         ? "Notifications are turned off for Citrus Battery in System Settings."
+                         : "Notifications need Citrus Battery to run as an app (build it with scripts/build-app.sh).")
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .labelsHidden()
-                .frame(width: 80)
-                .disabled(!lowChargeEnabled)
             }
-            HStack {
-                Toggle("Notify when time on battery is below", isOn: $lowTimeEnabled)
-                Picker("", selection: $lowTimeMinutes) {
-                    Text("10 minutes").tag(10)
-                    Text("20 minutes").tag(20)
-                    Text("30 minutes").tag(30)
-                    Text("1 hour").tag(60)
-                    Text("2 hours").tag(120)
-                }
-                .labelsHidden()
-                .frame(width: 120)
-                .disabled(!lowTimeEnabled)
-            }
-            Toggle("Notify when the battery is fully charged", isOn: $fullyCharged)
 
-            SettingsNote("Each alert fires once per discharge and again after you plug in, at most every 15 minutes.")
-
-            Text("iPhone and iPad").font(.headline).padding(.top, 6)
-            HStack {
-                Toggle("Notify when a connected device charges to", isOn: $deviceChargeEnabled)
-                Picker("", selection: $deviceChargePercent) {
-                    ForEach([50, 60, 70, 75, 80, 85, 90, 95, 100], id: \.self) { Text("\($0)%").tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 80)
-                .disabled(!deviceChargeEnabled)
-            }
-            SettingsNote("Fires once per charge, and again after the device drops 5% below the level.")
-
-            Divider()
-
-            if !notifier.isAvailable {
-                Text("Notifications need Citrus Battery to run as an app (build it with scripts/build-app.sh).")
-                    .font(.caption).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if notifier.authorization == .denied {
-                Text("Notifications are turned off for Citrus Battery in System Settings.")
-                    .font(.caption).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                Button("Send Test Notification") { notifier.sendTest() }
-                Button("macOS Notification Settings…") {
-                    let id = Bundle.main.bundleIdentifier ?? ""
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
-                        NSWorkspace.shared.open(url)
+            Section {
+                Toggle("Low charge", isOn: $lowChargeEnabled)
+                if lowChargeEnabled {
+                    Picker("Notify below", selection: $lowChargePercent) {
+                        ForEach([5, 10, 15, 20, 25, 30, 40, 50], id: \.self) { Text("\($0)%").tag($0) }
                     }
                 }
+                Toggle("Low time remaining", isOn: $lowTimeEnabled)
+                if lowTimeEnabled {
+                    Picker("Notify below", selection: $lowTimeMinutes) {
+                        Text("10 minutes").tag(10)
+                        Text("20 minutes").tag(20)
+                        Text("30 minutes").tag(30)
+                        Text("1 hour").tag(60)
+                        Text("2 hours").tag(120)
+                    }
+                }
+                Toggle("Fully charged", isOn: $fullyCharged)
+            } header: {
+                Text("This Mac")
+            } footer: {
+                SettingsNote("Each alert fires once per discharge and again after you plug in, at most every 15 minutes.")
             }
-            .disabled(!notifier.isAvailable)
+
+            Section {
+                Toggle("Charged to a level", isOn: $deviceChargeEnabled)
+                if deviceChargeEnabled {
+                    Picker("Notify at", selection: $deviceChargePercent) {
+                        ForEach([50, 60, 70, 75, 80, 85, 90, 95, 100], id: \.self) { Text("\($0)%").tag($0) }
+                    }
+                }
+            } header: {
+                Text("iPhone and iPad")
+            } footer: {
+                SettingsNote("Fires once per charge, and again after the device drops 5% below the level.")
+            }
+
+            Section {
+                HStack {
+                    Button("Send Test Notification") { notifier.sendTest() }
+                    Spacer()
+                    Button("macOS Notification Settings…") {
+                        let id = Bundle.main.bundleIdentifier ?? ""
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+                .disabled(!notifier.isAvailable)
+            }
         }
         .onChange(of: [lowChargeEnabled, lowTimeEnabled, fullyCharged, deviceChargeEnabled]) { enabled in
             if enabled.contains(true) { notifier.requestAuthorization() }
         }
         .onAppear { notifier.refreshAuthorization() }
+    }
+}
+
+private struct HistorySettings: View {
+    @EnvironmentObject private var history: HistoryController
+    @AppStorage(PreferenceKey.autosaveNewDevices) private var autoRecordNewDevices = true
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Auto-record new devices", isOn: $autoRecordNewDevices)
+                    .onChange(of: autoRecordNewDevices) { _ in history.reload() }
+            } footer: {
+                SettingsNote("Auto-Record saves a device's battery data about once an hour, skipping readings that "
+                    + "haven't changed since earlier the same day. You can turn it off per device on the "
+                    + "History page.")
+            }
+        }
+    }
+}
+
+private struct UpdateSettings: View {
+    @EnvironmentObject private var updater: AppUpdater
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Installed version") {
+                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development build")
+                }
+                LabeledContent("Last checked") {
+                    if let date = updater.lastUpdateCheckDate {
+                        Text(date, format: .dateTime.month().day().hour().minute())
+                    } else {
+                        Text("Never")
+                    }
+                }
+                HStack {
+                    Spacer()
+                    CheckForUpdatesButton(updater: updater)
+                }
+            } footer: {
+                if !updater.isAvailable {
+                    SettingsNote("Updates are available in the packaged application. Download it from GitHub Releases.")
+                }
+            }
+            Section {
+                Toggle("Automatically check for updates", isOn: Binding(
+                    get: { updater.automaticallyChecksForUpdates },
+                    set: { enabled in updater.setAutomaticallyChecksForUpdates(enabled) }))
+                Toggle("Automatically download and install updates", isOn: Binding(
+                    get: { updater.automaticallyDownloadsUpdates },
+                    set: { enabled in updater.setAutomaticallyDownloadsUpdates(enabled) }))
+                    .disabled(!updater.automaticallyChecksForUpdates)
+            } footer: {
+                SettingsNote("Checks GitHub daily. With automatic installation on, updates download in the background and install when Citrus Battery quits; otherwise each update is shown first.")
+            }
+            .disabled(!updater.isAvailable)
+        }
     }
 }
 
@@ -314,6 +355,8 @@ private struct SettingsNote: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
