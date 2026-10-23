@@ -399,9 +399,8 @@ private struct PanelWindowShape: NSViewRepresentable {
     static let cornerRadius: CGFloat = 18
 
     func makeNSView(context: Context) -> NSView {
-        // AppKit's glass blurs what's behind the window, as Control Center's menus
-        // do; SwiftUI's only sees the window's own content.
-        // Looked up at run time so the app also builds with SDKs before macOS 26.
+        // AppKit's glass, looked up at run time so the app also builds with SDKs
+        // before macOS 26.
         guard let type = NSClassFromString("NSGlassEffectView") as? NSView.Type else { return WindowWatcher() }
         let glass = type.init(frame: .zero)
         glass.setValue(Self.cornerRadius, forKey: "cornerRadius")
@@ -439,9 +438,18 @@ private struct PanelWindowShape: NSViewRepresentable {
         return image
     }()
 
+    /// How far the window's backdrop blurs what's behind it. The standard menu bar
+    /// window uses 60, which leaves only a haze; Control Center's menus let the
+    /// shapes behind show through.
+    static let backdropBlurRadius = 18.0
+
     private final class WindowWatcher: NSView {
+        private var keyObserver: NSObjectProtocol?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+            keyObserver = nil
             guard let window, let frame = window.contentView?.superview else { return }
             window.isOpaque = false
             window.backgroundColor = .clear
@@ -451,11 +459,44 @@ private struct PanelWindowShape: NSViewRepresentable {
             frame.layer?.masksToBounds = true
             PanelWindowShape.roundShadow(of: window)
             fitWindow()
+            // The window is reused each time the panel opens, and its backdrop is
+            // set up again as it appears, so lighten the blur after that each time.
+            keyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.lightenBackdropSoon() }
+            }
+            lightenBackdropSoon()
         }
 
         override func setFrameSize(_ newSize: NSSize) {
             super.setFrameSize(newSize)
             DispatchQueue.main.async { [weak self] in self?.fitWindow() }
+        }
+
+        private func lightenBackdropSoon() {
+            for delay in [0, 0.1, 0.4, 1.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.lightenBackdrop() }
+            }
+        }
+
+        /// Replaces the blur on the backdrop the standard menu bar window draws
+        /// under its content, which is what the glass shows.
+        private func lightenBackdrop() {
+            guard let layers = window?.contentView?.layer?.sublayers,
+                  let filterType = NSClassFromString("CAFilter") as? NSObject.Type else { return }
+            func filter(_ name: String) -> NSObject? {
+                filterType.perform(NSSelectorFromString("filterWithType:"), with: name)?.takeUnretainedValue() as? NSObject
+            }
+            for layer in layers where String(describing: type(of: layer)) == "CABackdropLayer" {
+                let current = (layer.filters as? [NSObject] ?? [])
+                    .first { $0.value(forKey: "name") as? String == "gaussianBlur" }?
+                    .value(forKey: "inputRadius") as? Double
+                guard current != PanelWindowShape.backdropBlurRadius,
+                      let saturate = filter("colorSaturate"), let blur = filter("gaussianBlur") else { continue }
+                saturate.setValue(1.8, forKey: "inputAmount")
+                blur.setValue(PanelWindowShape.backdropBlurRadius, forKey: "inputRadius")
+                layer.filters = [saturate, blur]
+            }
         }
 
         /// The window keeps its size when the panel's content changes while it's
@@ -589,7 +630,15 @@ private struct DevicePanelRow: View {
                 .font(.system(size: 13))
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(Color.primary.opacity(0.12)))
-            Text(device.displayName).lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(device.displayName).lineLimit(1)
+                if device.state == .disconnected {
+                    Text("Not connected")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .layoutPriority(1)
             Spacer(minLength: 8)
             Text(stateText(fraction: fraction))
                 .monospacedDigit()
@@ -608,8 +657,8 @@ private struct DevicePanelRow: View {
     private func stateText(fraction: Double?) -> String {
         switch device.state {
         case .ready, .disconnected:
-            let percent = fraction.map { "\(Int(($0 * 100).rounded()))%" } ?? "–"
-            return device.state == .disconnected ? "Last seen \(percent)" : percent
+            // When disconnected, the last reading, with "Not connected" under the name.
+            return fraction.map { "\(Int(($0 * 100).rounded()))%" } ?? "–"
         case .notTrusted: return "Tap Trust"
         case .locked: return "Locked"
         case .unavailable: return "–"
