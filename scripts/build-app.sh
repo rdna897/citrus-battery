@@ -91,6 +91,15 @@ MIN_MACOS="$(otool -l "$APP/Contents/MacOS/CitrusBattery" "$FRAMEWORKS"/*.dylib 
 ' | sort -V | tail -n 1)"
 [ -n "$MIN_MACOS" ] || { echo "error: cannot determine minimum macOS version" >&2; exit 1; }
 
+# macOS styles the app for the SDK the executable records (Liquid Glass from 26),
+# so it must record the SDK it was built with, not the deployment target.
+LINKED_SDK="$(otool -l "$APP/Contents/MacOS/CitrusBattery" | awk '$1 == "sdk" { print $2; exit }')"
+BUILD_SDK="$(xcrun --sdk macosx --show-sdk-version)"
+if [ "$LINKED_SDK" != "$BUILD_SDK" ]; then
+    echo "error: executable records SDK $LINKED_SDK, but was built with SDK $BUILD_SDK" >&2
+    exit 1
+fi
+
 # Render the app icon with transparent corners at each required resolution.
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

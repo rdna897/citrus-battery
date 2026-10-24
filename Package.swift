@@ -13,6 +13,22 @@ let dependencyPrefixes: [String] = {
     return ["/opt/homebrew", "/usr/local"]
 }()
 
+/// The macOS SDK being built against: $SDKROOT, else the one xcrun reports.
+let sdkPath: String? = {
+    if let sdk = Context.environment["SDKROOT"], !sdk.isEmpty { return sdk }
+    let xcrun = Process()
+    xcrun.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    xcrun.arguments = ["--sdk", "macosx", "--show-sdk-path"]
+    let output = Pipe()
+    xcrun.standardOutput = output
+    xcrun.standardError = FileHandle.nullDevice
+    guard (try? xcrun.run()) != nil else { return nil }
+    xcrun.waitUntilExit()
+    let path = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    return xcrun.terminationStatus == 0 && !path.isEmpty ? path : nil
+}()
+
 let package = Package(
     name: "CitrusBattery",
     platforms: [.macOS(.v13)],
@@ -43,7 +59,13 @@ let package = Package(
         .executableTarget(
             name: "CitrusBattery",
             dependencies: ["CitrusKit", .product(name: "Sparkle", package: "Sparkle")],
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+            linkerSettings: [.unsafeFlags([
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                // SwiftPM links with --sysroot, from which clang can't read the SDK's
+                // version, so the binary would record the deployment target as its SDK
+                // and macOS would give it the look of that release instead of the
+                // current one (no Liquid Glass). -isysroot lets clang read it.
+            ] + (sdkPath.map { ["-Xclang-linker", "-isysroot", "-Xclang-linker", $0] } ?? []))]
         ),
         .testTarget(name: "CitrusKitTests", dependencies: ["CitrusKit"]),
     ]
