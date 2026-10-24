@@ -67,7 +67,11 @@ struct HistoryView: View {
                 defer { if accessing { url.stopAccessingSecurityScopedResource() } }
                 if let data = try? Data(contentsOf: url) {
                     let added = history.importBackup(data)
-                    importMessage = "Imported \(added) entr\(added == 1 ? "y" : "ies")."
+                    var parts = ["\(added.entries) entr\(added.entries == 1 ? "y" : "ies")"]
+                    if added.sleepSessions > 0 {
+                        parts.append("\(added.sleepSessions) sleep\(added.sleepSessions == 1 ? "" : "s")")
+                    }
+                    importMessage = "Imported \(parts.joined(separator: " and "))."
                 }
             case let .failure(error):
                 history.reportError(error.localizedDescription)

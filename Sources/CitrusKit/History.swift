@@ -170,9 +170,15 @@ public final class HistoryStore: @unchecked Sendable {
                 start REAL PRIMARY KEY,
                 end REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS dark_wakes (
+                date REAL PRIMARY KEY,
+                reason TEXT NOT NULL,
+                detail TEXT
+            );
             """)
         try renameLegacyColumn()
         try addColumnIfMissing(table: "sleep_sessions", column: "brief_wakes", type: "INTEGER")
+        try addColumnIfMissing(table: "sleep_sessions", column: "wakes_logged", type: "INTEGER NOT NULL DEFAULT 0")
     }
 
     private func addColumnIfMissing(table: String, column: String, type: String) throws {
@@ -288,8 +294,8 @@ public final class HistoryStore: @unchecked Sendable {
         try locked {
             let statement = try prepare("""
                 INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity,
-                    brief_wakes)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    brief_wakes, wakes_logged)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """)
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, session.start.timeIntervalSince1970)
@@ -298,7 +304,54 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 4, session.endCapacity)
             bind(statement, 5, session.fullChargeCapacity)
             bind(statement, 6, session.briefWakes)
+            bind(statement, 7, session.wakesLogged ? 1 : 0)
             try step(statement)
+        }
+    }
+
+    /// Saves brief wakes read from macOS's power log, skipping ones already saved,
+    /// and marks the sessions they were read for.
+    public func insert(_ wakes: [DarkWake], loggedSessions: [Int64]) throws {
+        try locked {
+            try execute("BEGIN")
+            do {
+                let insert = try prepare("INSERT OR IGNORE INTO dark_wakes (date, reason, detail) VALUES (?, ?, ?)")
+                defer { sqlite3_finalize(insert) }
+                for wake in wakes {
+                    sqlite3_reset(insert)
+                    bind(insert, 1, wake.date.timeIntervalSince1970)
+                    bind(insert, 2, wake.reason.rawValue)
+                    bind(insert, 3, wake.detail)
+                    try step(insert)
+                }
+                let mark = try prepare("UPDATE sleep_sessions SET wakes_logged = 1 WHERE id = ?")
+                defer { sqlite3_finalize(mark) }
+                for id in loggedSessions {
+                    sqlite3_reset(mark)
+                    sqlite3_bind_int64(mark, 1, id)
+                    try step(mark)
+                }
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
+        }
+    }
+
+    /// Saved brief wakes, oldest first.
+    public func darkWakes() throws -> [DarkWake] {
+        try locked {
+            let statement = try prepare("SELECT date, reason, detail FROM dark_wakes ORDER BY date")
+            defer { sqlite3_finalize(statement) }
+            var result: [DarkWake] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                result.append(DarkWake(
+                    date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
+                    detail: text(statement, 2)))
+            }
+            return result
         }
     }
 
@@ -317,7 +370,8 @@ public final class HistoryStore: @unchecked Sendable {
     public func sleepSessions() throws -> [SleepSession] {
         try locked {
             let statement = try prepare("""
-                SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity, brief_wakes
+                SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity, brief_wakes,
+                    wakes_logged
                 FROM sleep_sessions ORDER BY end DESC
                 """)
             defer { sqlite3_finalize(statement) }
@@ -330,7 +384,8 @@ public final class HistoryStore: @unchecked Sendable {
                     startCapacity: int(statement, 3) ?? 0,
                     endCapacity: int(statement, 4) ?? 0,
                     fullChargeCapacity: int(statement, 5) ?? 1,
-                    briefWakes: int(statement, 6)))
+                    briefWakes: int(statement, 6),
+                    wakesLogged: int(statement, 7) == 1))
             }
             return result
         }
@@ -468,28 +523,79 @@ public final class HistoryStore: @unchecked Sendable {
 
     private struct Backup: Codable {
         var format = "citrus-battery-history"
-        var version = 1
+        /// 1: entries only. 2: also sleep sessions and their brief wakes.
+        var version = 2
         var entries: [HistoryEntry]
+        var sleepSessions: [BackupSleepSession]?
+        var darkWakes: [DarkWake]?
     }
 
-    /// JSON backup of every entry.
+    private struct BackupSleepSession: Codable {
+        var start: Date
+        var end: Date
+        var startCapacity: Int
+        var endCapacity: Int
+        var fullChargeCapacity: Int
+        var briefWakes: Int?
+        var wakesLogged: Bool?
+
+        init(_ session: SleepSession) {
+            start = session.start
+            end = session.end
+            startCapacity = session.startCapacity
+            endCapacity = session.endCapacity
+            fullChargeCapacity = session.fullChargeCapacity
+            briefWakes = session.briefWakes
+            wakesLogged = session.wakesLogged
+        }
+
+        var session: SleepSession {
+            SleepSession(start: start, end: end, startCapacity: startCapacity, endCapacity: endCapacity,
+                         fullChargeCapacity: fullChargeCapacity, briefWakes: briefWakes,
+                         wakesLogged: wakesLogged ?? false)
+        }
+    }
+
+    /// What an import added.
+    public struct BackupImport: Sendable, Equatable {
+        public var entries: Int
+        public var sleepSessions: Int
+
+        public init(entries: Int, sleepSessions: Int) {
+            self.entries = entries
+            self.sleepSessions = sleepSessions
+        }
+    }
+
+    /// JSON backup of every entry, sleep session and saved brief wake.
     public func exportBackup() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(Backup(entries: entries()))
+        return try encoder.encode(Backup(entries: entries(),
+                                         sleepSessions: sleepSessions().reversed().map(BackupSleepSession.init),
+                                         darkWakes: darkWakes()))
     }
 
-    /// Adds entries from a backup, skipping ones already present (same device and time).
-    /// Returns the number of entries added.
+    /// Adds what a backup holds that isn't already here: entries (same device and
+    /// time), sleep sessions (same start) and brief wakes (same time).
     @discardableResult
-    public func importBackup(_ data: Data) throws -> Int {
+    public func importBackup(_ data: Data) throws -> BackupImport {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let backup = try? decoder.decode(Backup.self, from: data),
               backup.format == "citrus-battery-history"
         else { throw HistoryError.unreadableBackup }
-        return try importEntries(backup.entries)
+        let entries = try importEntries(backup.entries)
+        var existing = Set(try sleepSessions().map { Int($0.start.timeIntervalSince1970) })
+        var sessions = 0
+        for session in (backup.sleepSessions ?? []).map(\.session)
+        where existing.insert(Int(session.start.timeIntervalSince1970)).inserted {
+            try insert(session)
+            sessions += 1
+        }
+        try insert(backup.darkWakes ?? [], loggedSessions: [])
+        return BackupImport(entries: entries, sleepSessions: sessions)
     }
 
     /// Adds entries, skipping ones already present (same device and second).

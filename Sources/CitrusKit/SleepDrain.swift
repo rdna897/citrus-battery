@@ -13,9 +13,12 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
     /// Times macOS woke the Mac briefly with the screen off during the sleep;
     /// `nil` when there were no power readings to count them from.
     public var briefWakes: Int?
+    /// Whether macOS's power log covered the sleep, so its brief wakes' reasons
+    /// were saved (see `WakeLog`).
+    public var wakesLogged: Bool
 
     public init(id: Int64 = 0, start: Date, end: Date, startCapacity: Int, endCapacity: Int,
-                fullChargeCapacity: Int, briefWakes: Int? = nil) {
+                fullChargeCapacity: Int, briefWakes: Int? = nil, wakesLogged: Bool = false) {
         self.id = id
         self.start = start
         self.end = end
@@ -23,6 +26,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
         self.endCapacity = endCapacity
         self.fullChargeCapacity = fullChargeCapacity
         self.briefWakes = briefWakes
+        self.wakesLogged = wakesLogged
     }
 
     public var interval: DateInterval { DateInterval(start: start, end: end) }

@@ -28,10 +28,14 @@ struct SleepView: View {
             } else {
                 summary(SleepStats(sessions))
                     .padding(16)
-                chart
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                    .frame(height: 200)
+                HStack(alignment: .top, spacing: 16) {
+                    chart
+                    wakeReasons
+                        .frame(width: 270)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+                .frame(height: 200)
                 Divider()
                 table
             }
@@ -49,7 +53,7 @@ struct SleepView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             Picker("Period", selection: $period) {
                 ForEach(SleepPeriod.allCases) { Text($0.label).tag($0) }
             }
@@ -57,14 +61,14 @@ struct SleepView: View {
             .labelsHidden()
             .fixedSize()
             if period == .custom {
-                DatePicker("From", selection: $from, in: ...to, displayedComponents: .date)
-                    .fixedSize()
-                DatePicker("To", selection: $to, in: from...Date(), displayedComponents: .date)
-                    .fixedSize()
+                HStack(spacing: 16) {
+                    DatePicker("From", selection: $from, in: ...to, displayedComponents: .date)
+                    DatePicker("To", selection: $to, in: from...Date(), displayedComponents: .date)
+                }
+                .fixedSize()
+                .datePickerStyle(.compact)
             }
-            Spacer()
         }
-        .datePickerStyle(.compact)
     }
 
     private func emptyState(title: String, message: String) -> some View {
@@ -193,12 +197,68 @@ struct SleepView: View {
             if let wakes = session.briefWakes {
                 Text(wakes == 1 ? "Woke briefly once" : "Woke briefly \(wakes) times")
             }
+            if session.wakesLogged,
+               let top = WakeBreakdown(WakeBreakdown.wakes(history.darkWakes, during: [session])).reasons.first {
+                Text("Mostly \(top.reason.label.lowercased()) (\(top.count))")
+            }
         }
         .font(.caption.monospacedDigit())
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+    }
+
+    // MARK: Wake reasons
+
+    /// Why macOS woke the Mac during the period's sleeps, from its power log.
+    private var wakeReasons: some View {
+        let logged = sessions.filter(\.wakesLogged)
+        let breakdown = WakeBreakdown(WakeBreakdown.wakes(history.darkWakes, during: logged))
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Why It Woke")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if breakdown.total == 0 {
+                Text(logged.isEmpty
+                    ? "Reasons are read from macOS's power log, which keeps about a week, so they're "
+                        + "available for sleeps from the last week onwards."
+                    : "No brief wakes in these sleeps.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(breakdown.reasons, id: \.reason) { item in
+                    ReasonRow(label: item.reason.label, count: item.count,
+                              fraction: Double(item.count) / Double(breakdown.total))
+                        .help(item.reason.explanation)
+                }
+                if !breakdown.tasks.isEmpty {
+                    Text("Most Scheduled")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    ForEach(breakdown.tasks.prefix(3), id: \.name) { task in
+                        HStack {
+                            Text(task.name)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(task.name)
+                            Spacer(minLength: 8)
+                            Text("\(task.count)").monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                }
+                if logged.count < sessions.count {
+                    Text("For \(logged.count) of \(sessions.count) sleeps: macOS's power log keeps about a week.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private func legendItem(_ colour: Color, _ title: String) -> some View {
@@ -257,6 +317,34 @@ struct SleepView: View {
     /// "0.4%", with a decimal below 10% so small sleep losses don't all read "0%".
     private func percent(_ fraction: Double) -> String {
         String(format: fraction < 0.1 ? "%.1f%%" : "%.0f%%", fraction * 100)
+    }
+}
+
+/// A wake reason with its count and a bar for its share.
+private struct ReasonRow: View {
+    let label: String
+    let count: Int
+    let fraction: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text("\(count) · \(Int((fraction * 100).rounded()))%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: max(geometry.size.width * fraction, 3))
+                }
+            }
+            .frame(height: 4)
+        }
     }
 }
 

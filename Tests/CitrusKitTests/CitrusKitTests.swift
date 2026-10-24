@@ -396,10 +396,33 @@ struct FakeSMC: SMCReading {
 
         let target = try HistoryStore(url: nil)
         try target.insert(Self.entry(19))
-        try #expect(target.importBackup(backup) == 1)
+        try #expect(target.importBackup(backup).entries == 1)
         try #expect(target.entries().count == 2)
-        try #expect(target.importBackup(backup) == 0)
+        try #expect(target.importBackup(backup).entries == 0)
         #expect(throws: HistoryError.self) { try target.importBackup(Data("{}".utf8)) }
+    }
+
+    @Test func backupCarriesSleepSessionsAndWakes() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let session = SleepSession(start: night, end: night + 8 * 3600, startCapacity: 4000, endCapacity: 3900,
+                                   fullChargeCapacity: 4500, briefWakes: 2, wakesLogged: true)
+        let source = try HistoryStore(url: nil)
+        try source.insert(session)
+        try source.insert([DarkWake(date: night + 600, reason: .scheduledTask, detail: "com.apple.x"),
+                           DarkWake(date: night + 1200, reason: .wireless)], loggedSessions: [])
+        let backup = try source.exportBackup()
+
+        let target = try HistoryStore(url: nil)
+        #expect(try target.importBackup(backup) == HistoryStore.BackupImport(entries: 0, sleepSessions: 1))
+        let restored = try #require(try target.sleepSessions().first)
+        #expect(restored.start == night && restored.briefWakes == 2 && restored.wakesLogged)
+        #expect(try target.darkWakes() == source.darkWakes())
+        // Importing again adds nothing.
+        #expect(try target.importBackup(backup) == HistoryStore.BackupImport(entries: 0, sleepSessions: 0))
+        #expect(try target.darkWakes().count == 2)
+        // Version 1 backups, with entries only, still import.
+        let v1 = Data(#"{"format":"citrus-battery-history","version":1,"entries":[]}"#.utf8)
+        #expect(try target.importBackup(v1) == HistoryStore.BackupImport(entries: 0, sleepSessions: 0))
     }
 
     @Test func autoRecordDuplicateRule() {
@@ -1275,5 +1298,52 @@ struct FakeSMC: SMCReading {
 
     @Test func readsThisMac() {
         #expect(SignificantEnergy.read() != nil)
+    }
+}
+
+@Suite struct WakeLogTests {
+    static let log = """
+    PM ASL data store: /var/log/powermanagement
+    Time stamp                Domain              \tMessage
+    2026-10-24 01:23:10 +0100 Sleep               \tEntering Sleep state due to 'Clamshell Sleep' Using Batt (Charge:80%) 30 secs
+    2026-10-24 01:23:12 +0100 Wake Requests       \t[process=mDNSResponder request=Maintenance deltaSecs=7200 wakeAt=2026-10-24 03:23:12 info="upkeep wake"] [*process=dasd request=SleepService deltaSecs=999 wakeAt=2026-10-24 01:39:51 info="com.apple.dasd:501:com.apple.intelligenceflow.toolbox.update.fastpass"]
+    2026-10-24 01:39:51 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to NUB.SPMI0.SW3 nub-spmi0.0x02 rtc/SleepService Using BATT (Charge:80%) 7 secs
+    2026-10-24 01:40:00 +0100 Wake Requests       \t[*process=mDNSResponder request=Maintenance deltaSecs=7200 wakeAt=2026-10-24 03:40:00 info="upkeep wake"]
+    2026-10-24 03:40:00 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to NUB.SPMI0.SW3 nub-spmi0.0x02 rtc/Maintenance Using BATT (Charge:79%) 5 secs
+    2026-10-24 04:02:13 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.OutboxNotEmpty/ Using BATT (Charge:79%) 9 secs
+    2026-10-24 05:10:00 +0100 Wake Requests       \t[*process=powerd request=UserWake deltaSecs=60 wakeAt=2026-10-24 05:11:00 info="com.apple.alarm.user-invisible-com.apple.acmd.alarm,532"]
+    2026-10-24 05:11:00 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to rtc/UserWake Using BATT (Charge:79%) 3 secs
+    2026-10-24 06:00:00 +0100 Wake                \tDarkWake to FullWake from Deep Idle [CDNVAP] : due to Notification Using BATT (Charge:79%) 5 secs
+    2026-10-24 09:35:00 +0100 Wake                \tWake from Deep Idle [CDNVA] : due to smc.sysState.Wake(0x70070000) lid SMC.OutboxNotEmpty Using BATT (Charge:78%)
+    """
+
+    @Test func readsBriefWakesWithReasons() throws {
+        let (wakes, since) = WakeLog.parse(Self.log)
+        #expect(since == ISO8601DateFormatter().date(from: "2026-10-24T00:23:10Z"))
+        // Full wakes ("Wake" domain) aren't brief wakes.
+        #expect(wakes.map(\.reason) == [.scheduledTask, .networkUpkeep, .wireless, .scheduledTask])
+        #expect(wakes[0].detail == "com.apple.intelligenceflow.toolbox.update.fastpass")
+        #expect(wakes[0].date == ISO8601DateFormatter().date(from: "2026-10-24T00:39:51Z"))
+        #expect(wakes[1].detail == "upkeep wake")
+        #expect(wakes[2].detail == nil)
+        #expect(wakes[3].detail == "com.apple.acmd.alarm")
+    }
+
+    @Test func breaksWakesDownForSleeps() {
+        let (wakes, _) = WakeLog.parse(Self.log)
+        let start = ISO8601DateFormatter().date(from: "2026-10-24T00:23:10Z")!
+        let first = SleepSession(start: start, end: start + 3 * 3600, startCapacity: 4000, endCapacity: 3990,
+                                 fullChargeCapacity: 4500)
+        let later = SleepSession(start: start + 3.5 * 3600, end: start + 5 * 3600, startCapacity: 4000,
+                                 endCapacity: 3990, fullChargeCapacity: 4500)
+        let during = WakeBreakdown.wakes(wakes, during: [later, first])
+        #expect(during.count == 4)
+        let breakdown = WakeBreakdown(during)
+        #expect(breakdown.total == 4)
+        #expect(breakdown.reasons.first?.count == 2)
+        #expect(breakdown.reasons.map(\.reason) == [.scheduledTask, .networkUpkeep, .wireless])
+        #expect(breakdown.tasks.map(\.name) == ["com.apple.acmd.alarm",
+                                                "com.apple.intelligenceflow.toolbox.update.fastpass"])
+        #expect(WakeBreakdown.wakes(wakes, during: []).isEmpty)
     }
 }

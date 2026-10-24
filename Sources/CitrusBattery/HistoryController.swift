@@ -19,6 +19,8 @@ final class HistoryController: ObservableObject {
     @Published private(set) var trends: [String: HealthTrend] = [:]
     /// This Mac's sleeps on battery, newest first.
     @Published private(set) var sleepSessions: [SleepSession] = []
+    /// Brief wakes during those sleeps, with macOS's reasons, oldest first.
+    @Published private(set) var darkWakes: [DarkWake] = []
     /// The last 30 days of power readings and sleeps, for the power chart.
     @Published private(set) var powerMinutes: [PowerMinute] = []
     @Published private(set) var sleepPeriods: [DateInterval] = []
@@ -53,6 +55,7 @@ final class HistoryController: ObservableObject {
             .sink { [weak self] power in self?.recordPower(power) })
         loadPowerTimeline()
         fillBriefWakes()
+        importWakeLog()
         observers.append(iosDevices.$devices
             .sink { [weak self] devices in
                 for device in devices where device.state == .ready {
@@ -183,11 +186,44 @@ final class HistoryController: ObservableObject {
             session.briefWakes = SleepDrain.briefWakes(during: session, minutes: self.powerMinutes)
             self.perform { try store.insert(session) }
             self.reloadSleepSessions()
+            self.importWakeLog()
         }
     }
 
     private func reloadSleepSessions() {
-        perform { sleepSessions = try store?.sleepSessions() ?? [] }
+        perform {
+            let wakes = try store?.darkWakes() ?? []
+            darkWakes = wakes
+            // Where macOS's log covered a sleep, its count beats the estimate from
+            // power readings, which joins wakes in back-to-back minutes.
+            sleepSessions = try (store?.sleepSessions() ?? []).map { session in
+                guard session.wakesLogged else { return session }
+                var counted = session
+                counted.briefWakes = WakeBreakdown.wakes(wakes, during: [session]).count
+                return counted
+            }
+        }
+    }
+
+    /// Saves the reasons for brief wakes during sleeps that macOS's power log
+    /// still covers (about a week), since the log itself doesn't last.
+    private func importWakeLog() {
+        let pending = sleepSessions.filter { !$0.wakesLogged }
+        guard !pending.isEmpty, let store else { return }
+        Task.detached(priority: .utility) {
+            guard let log = WakeLog.read() else { return }
+            let (wakes, since) = WakeLog.parse(log)
+            // Sessions the log covers from the start.
+            guard let since else { return }
+            let covered = pending.filter { since <= $0.start }
+            guard !covered.isEmpty else { return }
+            let inSleeps = WakeBreakdown.wakes(wakes, during: covered)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.perform { try store.insert(inSleeps, loggedSessions: covered.map(\.id)) }
+                self.reloadSleepSessions()
+            }
+        }
     }
 
     /// Counts brief wakes for sessions saved without them while the power readings
@@ -265,11 +301,10 @@ final class HistoryController: ObservableObject {
         return data
     }
 
-    /// Returns the number of entries added.
     @discardableResult
-    func importBackup(_ data: Data) -> Int {
-        var added = 0
-        perform { added = try store?.importBackup(data) ?? 0 }
+    func importBackup(_ data: Data) -> HistoryStore.BackupImport {
+        var added = HistoryStore.BackupImport(entries: 0, sleepSessions: 0)
+        perform { added = try store?.importBackup(data) ?? added }
         reload()
         return added
     }

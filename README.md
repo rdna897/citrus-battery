@@ -104,7 +104,9 @@ Click any screenshot to see it at full resolution.
 - Sleep drain: how much charge the Mac lost during each sleep of 30 minutes or more
   on battery, and a warning when it's unusually high. A Sleep page keeps every sleep
   and shows the average drain, loss per sleep and brief wakes for any period, with a
-  chart and a sortable table.
+  chart and a sortable table. It also shows why the Mac woke (scheduled tasks, network
+  upkeep, Wi-Fi or Bluetooth), read from macOS's power log, and which scheduled tasks
+  woke it most.
 - Permanent battery failure flags, decoded.
 - A notice when health falls below 80%, with a link to search for a replacement.
 
@@ -169,6 +171,7 @@ need coconutBattery Plus.
 | Charger check: agreed power, voltage options, whether it limits charging | ✓ | — |
 | Sleep drain per sleep, with a warning when high | ✓ | — |
 | Sleep history with statistics for any date range | ✓ | — |
+| Why the Mac woke during sleep | ✓ | — |
 | Health forecast: loss per year and when health reaches 80% | ✓ | — |
 | iPhone/iPad over USB | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | Paid |
