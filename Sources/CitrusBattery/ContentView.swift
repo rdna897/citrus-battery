@@ -4,6 +4,7 @@ enum SidebarItem: Hashable {
     case thisMac
     case device(String)
     case history
+    case sleep
     case settings
 }
 
@@ -56,6 +57,8 @@ struct ContentView: View {
                 Section("Data") {
                     Label("History", systemImage: "clock.arrow.circlepath")
                         .tag(SidebarItem.history)
+                    Label("Sleep", systemImage: "moon.zzz")
+                        .tag(SidebarItem.sleep)
                 }
             }
             .focused($focusedList, equals: .pages)
@@ -80,6 +83,8 @@ struct ContentView: View {
                 IOSDetailView(udid: udid)
             case .history:
                 HistoryView()
+            case .sleep:
+                SleepView()
             case .settings:
                 SettingsView()
             }

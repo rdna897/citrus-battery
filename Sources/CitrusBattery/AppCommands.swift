@@ -27,6 +27,7 @@ struct AppCommands: Commands {
             Divider()
             Button("History") { show(.history) }
                 .keyboardShortcut("y")
+            Button("Sleep") { show(.sleep) }
             Button("Advanced Viewer") { openWindow(id: "advanced", value: advancedTarget) }
                 .keyboardShortcut("i", modifiers: [.command, .option])
             Button("Battery Lifetime Data") {
@@ -90,7 +91,7 @@ enum AboutCitrusBattery {
     }
 }
 
-/// citrusbattery://mac, //history, //settings, //device/<udid>, //advanced[/<udid>], //lifetime[/<udid>]
+/// citrusbattery://mac, //history, //sleep, //settings, //device/<udid>, //advanced[/<udid>], //lifetime[/<udid>]
 enum CitrusURL {
     enum Route: Equatable {
         case select(SidebarItem)
@@ -104,6 +105,7 @@ enum CitrusURL {
         switch url.host?.lowercased() {
         case "mac", nil: return .select(.thisMac)
         case "history": return .select(.history)
+        case "sleep": return .select(.sleep)
         case "settings": return .select(.settings)
         case "device": return id.map { .select(.device($0)) }
         case "advanced": return .advanced(id ?? AdvancedTarget.mac)

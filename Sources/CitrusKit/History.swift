@@ -172,6 +172,16 @@ public final class HistoryStore: @unchecked Sendable {
             );
             """)
         try renameLegacyColumn()
+        try addColumnIfMissing(table: "sleep_sessions", column: "brief_wakes", type: "INTEGER")
+    }
+
+    private func addColumnIfMissing(table: String, column: String, type: String) throws {
+        let statement = try prepare("SELECT 1 FROM pragma_table_info('\(table)') WHERE name = '\(column)'")
+        let exists = sqlite3_step(statement) == SQLITE_ROW
+        sqlite3_finalize(statement)
+        if !exists {
+            try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(type)")
+        }
     }
 
     /// Databases from earlier builds named the per-device column `smart_save`.
@@ -272,14 +282,14 @@ public final class HistoryStore: @unchecked Sendable {
 
     // MARK: Sleep
 
-    /// Keeps the store small: older sessions are dropped on insert.
-    public static let sleepSessionLimit = 100
-
+    /// Sessions are kept indefinitely: a row is a few dozen bytes, so years of
+    /// nightly sleeps stay well under a megabyte.
     public func insert(_ session: SleepSession) throws {
         try locked {
             let statement = try prepare("""
-                INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity,
+                    brief_wakes)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """)
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, session.start.timeIntervalSince1970)
@@ -287,11 +297,19 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 3, session.startCapacity)
             bind(statement, 4, session.endCapacity)
             bind(statement, 5, session.fullChargeCapacity)
+            bind(statement, 6, session.briefWakes)
             try step(statement)
-            try execute("""
-                DELETE FROM sleep_sessions WHERE id NOT IN
-                    (SELECT id FROM sleep_sessions ORDER BY end DESC LIMIT \(Self.sleepSessionLimit))
-                """)
+        }
+    }
+
+    /// Records the brief wakes counted for a session saved without them.
+    public func setBriefWakes(_ count: Int, forSleepSession id: Int64) throws {
+        try locked {
+            let statement = try prepare("UPDATE sleep_sessions SET brief_wakes = ? WHERE id = ?")
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, count)
+            sqlite3_bind_int64(statement, 2, id)
+            try step(statement)
         }
     }
 
@@ -299,7 +317,7 @@ public final class HistoryStore: @unchecked Sendable {
     public func sleepSessions() throws -> [SleepSession] {
         try locked {
             let statement = try prepare("""
-                SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity
+                SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity, brief_wakes
                 FROM sleep_sessions ORDER BY end DESC
                 """)
             defer { sqlite3_finalize(statement) }
@@ -311,7 +329,8 @@ public final class HistoryStore: @unchecked Sendable {
                     end: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
                     startCapacity: int(statement, 3) ?? 0,
                     endCapacity: int(statement, 4) ?? 0,
-                    fullChargeCapacity: int(statement, 5) ?? 1))
+                    fullChargeCapacity: int(statement, 5) ?? 1,
+                    briefWakes: int(statement, 6)))
             }
             return result
         }

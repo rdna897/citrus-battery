@@ -367,6 +367,7 @@ struct ChargerCard: View {
 struct SleepCard: View {
     /// Newest first.
     let sessions: [SleepSession]
+    @EnvironmentObject private var navigator: Navigator
 
     var body: some View {
         Card(title: "Sleep", systemImage: "moon.zzz.fill") {
@@ -391,6 +392,8 @@ struct SleepCard: View {
                     + "shorter ones are too brief for the battery gauge to show the loss.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button("Show All Sleeps…") { navigator.selection = .sleep }
+                    .controlSize(.small)
             }
         }
     }

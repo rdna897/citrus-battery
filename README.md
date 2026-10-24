@@ -102,7 +102,9 @@ Click any screenshot to see it at full resolution.
   reported capacity read low, it says so.
 - Cell voltages for each cell in the pack, with a warning when they drift apart.
 - Sleep drain: how much charge the Mac lost during each sleep of 30 minutes or more
-  on battery, its average, and a warning when it's unusually high.
+  on battery, and a warning when it's unusually high. A Sleep page keeps every sleep
+  and shows the average drain, loss per sleep and brief wakes for any period, with a
+  chart and a sortable table.
 - Permanent battery failure flags, decoded.
 - A notice when health falls below 80%, with a link to search for a replacement.
 
@@ -146,7 +148,7 @@ Click any screenshot to see it at full resolution.
 **Settings**
 - 8 temperature units, mAh or Wh, raw or macOS-style percentages, and a smoothed or
   fast (1-second) refresh.
-- `citrusbattery://` links (`mac`, `history`, `settings`, `device/<udid>`, `advanced[/<udid>]`,
+- `citrusbattery://` links (`mac`, `history`, `sleep`, `settings`, `device/<udid>`, `advanced[/<udid>]`,
   `lifetime[/<udid>]`) and command-line output (`--dump`, `--ios`, `--advanced`).
 
 Works on Apple Silicon and Intel Macs.
@@ -166,6 +168,7 @@ need coconutBattery Plus.
 | Power history chart, up to 30 days, with sleep and brief wakes | ✓ | — |
 | Charger check: agreed power, voltage options, whether it limits charging | ✓ | — |
 | Sleep drain per sleep, with a warning when high | ✓ | — |
+| Sleep history with statistics for any date range | ✓ | — |
 | Health forecast: loss per year and when health reaches 80% | ✓ | — |
 | iPhone/iPad over USB | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | Paid |

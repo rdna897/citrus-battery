@@ -9,6 +9,7 @@ enum PreferenceKey {
     static let capacityStyle = "capacityStyle"
     static let updateInterval = "updateInterval"
     static let powerChartPeriod = "powerChartPeriod"
+    static let sleepPeriod = "sleepPeriod"
     static let autosaveNewDevices = "autosaveNewDevices"
 
     static let showInMenuBar = "showInMenuBar"
@@ -50,9 +51,10 @@ extension UserDefaults {
 /// Which part of the main window is showing; shared so the menu bar can open History.
 @MainActor
 final class Navigator: ObservableObject {
-    // CITRUS_DEBUG_OPEN=history or settings starts on that page (used for UI captures).
+    // CITRUS_DEBUG_OPEN=history, sleep or settings starts on that page (used for UI captures).
     @Published var selection: SidebarItem? = switch ProcessInfo.processInfo.environment["CITRUS_DEBUG_OPEN"] {
     case "history": .history
+    case "sleep": .sleep
     case "settings": .settings
     default: .thisMac
     }

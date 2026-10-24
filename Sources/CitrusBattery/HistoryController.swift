@@ -52,6 +52,7 @@ final class HistoryController: ObservableObject {
         observers.append(monitor.$power
             .sink { [weak self] power in self?.recordPower(power) })
         loadPowerTimeline()
+        fillBriefWakes()
         observers.append(iosDevices.$devices
             .sink { [weak self] devices in
                 for device in devices where device.state == .ready {
@@ -172,13 +173,14 @@ final class HistoryController: ObservableObject {
                 return
             }
             guard let self, let store = self.store else { return }
-            guard let session = SleepSession(before: sleep.battery, after: after,
+            guard var session = SleepSession(before: sleep.battery, after: after,
                                              sleptAt: sleep.date, wokeAt: wokeAt) else {
                 let detail = "power \(sleep.battery.isExternalPowerConnected)/\(after.isExternalPowerConnected), "
                     + "capacity \(sleep.battery.currentCapacity ?? -1)→\(after.currentCapacity ?? -1)"
                 Self.log.notice("Sleep \(slept, privacy: .public) not measured: \(detail, privacy: .public)")
                 return
             }
+            session.briefWakes = SleepDrain.briefWakes(during: session, minutes: self.powerMinutes)
             self.perform { try store.insert(session) }
             self.reloadSleepSessions()
         }
@@ -186,6 +188,18 @@ final class HistoryController: ObservableObject {
 
     private func reloadSleepSessions() {
         perform { sleepSessions = try store?.sleepSessions() ?? [] }
+    }
+
+    /// Counts brief wakes for sessions saved without them while the power readings
+    /// still cover them (they're kept for 30 days), so the count outlives them.
+    private func fillBriefWakes() {
+        var filled = false
+        for session in sleepSessions where session.briefWakes == nil {
+            guard let count = SleepDrain.briefWakes(during: session, minutes: powerMinutes) else { continue }
+            perform { try store?.setBriefWakes(count, forSleepSession: session.id) }
+            filled = true
+        }
+        if filled { reloadSleepSessions() }
     }
 
     // MARK: Power timeline

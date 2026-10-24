@@ -984,17 +984,72 @@ struct FakeSMC: SMCReading {
         #expect(abs((SleepDrain.averageLossPerHour([heavy, nap]) ?? 0) - 0.12 / 6) < 0.0001)
     }
 
-    @Test func storeKeepsNewestFirstAndCapsCount() throws {
+    @Test func storeKeepsEverySessionNewestFirstWithBriefWakes() throws {
         let store = try HistoryStore(url: nil)
-        for index in 0..<(HistoryStore.sleepSessionLimit + 5) {
+        for index in 0..<150 {
             let end = Self.night + Double(index) * 86_400
             try store.insert(SleepSession(start: end - 8 * 3600, end: end, startCapacity: 4000,
-                                          endCapacity: 3900, fullChargeCapacity: 4500))
+                                          endCapacity: 3900, fullChargeCapacity: 4500,
+                                          briefWakes: index == 149 ? 12 : nil))
         }
-        let sessions = try store.sleepSessions()
-        #expect(sessions.count == HistoryStore.sleepSessionLimit)
-        #expect(sessions.first?.end == Self.night + Double(HistoryStore.sleepSessionLimit + 4) * 86_400)
-        #expect(sessions.first?.startCapacity == 4000)
+        var sessions = try store.sleepSessions()
+        #expect(sessions.count == 150)
+        #expect(sessions.first?.end == Self.night + 149 * 86_400)
+        #expect(sessions.first?.briefWakes == 12)
+        #expect(sessions[1].briefWakes == nil)
+        try store.setBriefWakes(3, forSleepSession: sessions[1].id)
+        sessions = try store.sleepSessions()
+        #expect(sessions[1].briefWakes == 3)
+    }
+
+    @Test func countsBriefWakesOnlyWhereReadingsReach() {
+        let session = SleepSession(start: Self.night, end: Self.night + 8 * 3600, startCapacity: 4000,
+                                   endCapacity: 3900, fullChargeCapacity: 4500)
+        func minute(_ offset: TimeInterval) -> PowerMinute {
+            PowerMinute(start: Self.night + offset, averageWatts: 1, peakWatts: 2, chargePercent: 80, onAdapter: false)
+        }
+        // Readings before the sleep, then two separate wakes (one two minutes long).
+        let minutes = [minute(-600), minute(3600), minute(3660), minute(7200)]
+        #expect(SleepDrain.briefWakes(during: session, minutes: minutes) == 2)
+        // Readings that start after the sleep began can't say how often it woke.
+        #expect(SleepDrain.briefWakes(during: session, minutes: Array(minutes.dropFirst())) == nil)
+        #expect(SleepDrain.briefWakes(during: session, minutes: []) == nil)
+    }
+
+    @Test func summarisesSleepsInAPeriod() {
+        let calm = SleepSession(start: Self.night, end: Self.night + 8 * 3600, startCapacity: 4000,
+                                endCapacity: 3910, fullChargeCapacity: 4500, briefWakes: 16)
+        let heavy = SleepSession(start: Self.night + 86_400, end: Self.night + 86_400 + 4 * 3600,
+                                 startCapacity: 4000, endCapacity: 3640, fullChargeCapacity: 4500)
+        let stats = SleepStats([calm, heavy])
+        #expect(stats.count == 2)
+        #expect(stats.hours == 12)
+        #expect(abs(stats.lossFraction - 0.10) < 0.0001)
+        #expect(abs((stats.lossPerHour ?? 0) - 0.10 / 12) < 0.0001)
+        #expect(abs((stats.lossPerSleep ?? 0) - 0.05) < 0.0001)
+        // Only the sleep with counted wakes: 16 over 8 hours.
+        #expect(stats.briefWakesPerHour == 2)
+        #expect(stats.highLossCount == 1)
+        #expect(SleepStats([]).lossPerHour == nil)
+    }
+
+    @Test func picksSleepsByPeriod() {
+        let calendar = ManufactureDateTests.utc
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 21))!
+        func ending(daysAgo: Int, hour: Int = 7) -> SleepSession {
+            let end = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))! + Double(hour) * 3600
+            return SleepSession(start: end - 8 * 3600, end: end, startCapacity: 4000, endCapacity: 3900,
+                                fullChargeCapacity: 4500)
+        }
+        let sessions = [ending(daysAgo: 0), ending(daysAgo: 6), ending(daysAgo: 7), ending(daysAgo: 40)]
+        #expect(SleepPeriod.week.sessions(sessions, from: now, to: now, now: now, calendar: calendar).count == 2)
+        #expect(SleepPeriod.month.sessions(sessions, from: now, to: now, now: now, calendar: calendar).count == 3)
+        #expect(SleepPeriod.all.sessions(sessions, from: now, to: now, now: now, calendar: calendar).count == 4)
+        // Custom covers whole days at both ends, in either order.
+        let sixDaysAgo = calendar.date(byAdding: .day, value: -6, to: now)!
+        let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now)!
+        #expect(SleepPeriod.custom.sessions(sessions, from: sixDaysAgo, to: sevenDaysAgo, now: now,
+                                            calendar: calendar).count == 2)
     }
 }
 
