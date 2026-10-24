@@ -3,16 +3,27 @@ import Combine
 import Sparkle
 import SwiftUI
 
+/// What the last update check found, shown in Settings as Software Update does.
+enum UpdateStatus: Equatable {
+    case idle
+    case checking
+    case upToDate
+    case available(version: String)
+    case failed
+}
+
 /// Sparkle owns scheduling, preferences, signature verification and installation.
 /// Keep one controller alive for the lifetime of the application.
 @MainActor
 final class AppUpdater: ObservableObject {
+    @Published private(set) var status = UpdateStatus.idle
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = false
     @Published private(set) var automaticallyDownloadsUpdates = false
     @Published private(set) var lastUpdateCheckDate: Date?
 
     private let updater: SPUUpdater?
+    private let events = UpdaterEvents()
     private var started = false
 
     init() {
@@ -24,8 +35,19 @@ final class AppUpdater: ObservableObject {
             return
         }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main,
-                                 userDriver: UserDriver(hostBundle: .main, delegate: nil), delegate: nil)
+                                 userDriver: UserDriver(hostBundle: .main, delegate: nil), delegate: events)
         self.updater = updater
+        events.found = { [weak self] version in self?.status = .available(version: version) }
+        events.notFound = { [weak self] in self?.status = .upToDate }
+        events.finished = { [weak self] error in
+            guard let self else { return }
+            if let error = error as NSError?,
+               !(error.domain == SUSparkleErrorDomain && error.code == Int(SUError.noUpdateError.rawValue)) {
+                status = .failed
+            } else if status == .checking {
+                status = .idle
+            }
+        }
         updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheckForUpdates)
         updater.publisher(for: \.automaticallyChecksForUpdates).assign(to: &$automaticallyChecksForUpdates)
         updater.publisher(for: \.automaticallyDownloadsUpdates).assign(to: &$automaticallyDownloadsUpdates)
@@ -44,9 +66,17 @@ final class AppUpdater: ObservableObject {
         }
     }
 
+    /// Checks with Sparkle's windows: progress, then the result or the update.
     func checkForUpdates() {
         NSApp.activate(ignoringOtherApps: true)
         updater?.checkForUpdates()
+    }
+
+    /// Checks without any window, for Settings to show the result in place.
+    func checkForUpdatesQuietly() {
+        guard let updater, updater.canCheckForUpdates else { return }
+        status = .checking
+        updater.checkForUpdateInformation()
     }
 
     func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
@@ -55,6 +85,27 @@ final class AppUpdater: ObservableObject {
 
     func setAutomaticallyDownloadsUpdates(_ enabled: Bool) {
         updater?.automaticallyDownloadsUpdates = enabled
+    }
+}
+
+/// Sparkle's reports on update checks, quiet or not, passed on to AppUpdater.
+private final class UpdaterEvents: NSObject, SPUUpdaterDelegate {
+    var found: @MainActor (String) -> Void = { _ in }
+    var notFound: @MainActor () -> Void = {}
+    var finished: @MainActor ((any Error)?) -> Void = { _ in }
+
+    // Sparkle calls its delegate on the main thread.
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString
+        MainActor.assumeIsolated { found(version) }
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        MainActor.assumeIsolated { notFound() }
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        MainActor.assumeIsolated { finished(error) }
     }
 }
 

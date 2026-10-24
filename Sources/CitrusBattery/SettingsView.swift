@@ -368,27 +368,50 @@ private struct UpdateSettings: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "(development build)"
     }
 
+    @ViewBuilder
+    private var statusLine: some View {
+        switch updater.status {
+        case .checking:
+            HStack(spacing: 5) {
+                ProgressView().controlSize(.mini)
+                Text("Checking for updates…")
+            }
+        case .upToDate:
+            Text("Up to date")
+        case let .available(newVersion):
+            Text("Version \(newVersion) is available")
+        case .failed:
+            Text("Couldn't check for updates. Check your internet connection and try again.")
+        case .idle:
+            if let date = updater.lastUpdateCheckDate {
+                Text("Last checked \(date.formatted(.dateTime.month().day().hour().minute()))")
+            } else {
+                Text("Not checked yet")
+            }
+        }
+    }
+
     var body: some View {
         Form {
             Section {
-                // As in Software Update: the version and when it was last checked,
-                // with the button beside them.
+                // As in Software Update: the result of the last check in place,
+                // with no windows until there's an update to look at.
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Citrus Battery \(version)")
-                        Group {
-                            if let date = updater.lastUpdateCheckDate {
-                                Text("Last checked \(date.formatted(.dateTime.month().day().hour().minute()))")
-                            } else {
-                                Text("Not checked yet")
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        statusLine
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Check Now", action: updater.checkForUpdates)
-                        .disabled(!updater.canCheckForUpdates)
+                    if case .available = updater.status {
+                        Button("Update Now…", action: updater.checkForUpdates)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!updater.canCheckForUpdates)
+                    } else {
+                        Button("Check Now", action: updater.checkForUpdatesQuietly)
+                            .disabled(!updater.canCheckForUpdates || updater.status == .checking)
+                    }
                 }
             } footer: {
                 if !updater.isAvailable {
