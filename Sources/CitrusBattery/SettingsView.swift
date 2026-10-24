@@ -41,6 +41,7 @@ struct SettingsView: View {
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
         .navigationTitle("Settings")
+        .toolbarBackground(.hidden, for: .windowToolbar)
     }
 
     @ViewBuilder

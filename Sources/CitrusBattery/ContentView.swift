@@ -7,11 +7,22 @@ enum SidebarItem: Hashable {
     case settings
 }
 
+/// The two lists of the sidebar, which share one selection.
+private enum SidebarList: Hashable {
+    case pages, settings
+
+    init(for selection: SidebarItem?) {
+        self = selection == .settings ? .settings : .pages
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var monitor: BatteryMonitor
     @EnvironmentObject private var navigator: Navigator
     @EnvironmentObject private var iosDevices: IOSDeviceMonitor
     @Environment(\.openWindow) private var openWindow
+    /// Which sidebar list has focus: the pages, or Settings under them.
+    @FocusState private var focusedList: SidebarList?
 
     var body: some View {
         NavigationSplitView {
@@ -47,8 +58,13 @@ struct ContentView: View {
                         .tag(SidebarItem.history)
                 }
             }
+            .focused($focusedList, equals: .pages)
             .safeAreaInset(edge: .bottom, spacing: 0) { settingsFooter }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
+            // A list shows its selection in the accent colour only while it has
+            // focus, so move focus to whichever list holds the selection.
+            .onChange(of: navigator.selection) { focusedList = SidebarList(for: $0) }
+            .onAppear { focusedList = SidebarList(for: navigator.selection) }
         } detail: {
             detail
         }
@@ -69,22 +85,17 @@ struct ContentView: View {
             }
     }
 
-    /// Settings pinned under the list, selected like the pages above it.
+    /// Settings pinned under the list: a one-row sidebar list sharing the
+    /// selection, so it's highlighted exactly like the pages above it.
     private var settingsFooter: some View {
-        VStack(spacing: 0) {
-            Divider()
-            Button { navigator.selection = .settings } label: {
-                Label("Settings", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                    .background(navigator.selection == .settings ? Color.primary.opacity(0.1) : .clear,
-                                in: RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-            .padding(10)
+        List(selection: $navigator.selection) {
+            Label("Settings", systemImage: "gearshape")
+                .tag(SidebarItem.settings)
         }
+        .scrollDisabled(true)
+        .scrollContentBackground(.hidden)
+        .frame(height: 44)
+        .focused($focusedList, equals: .settings)
     }
 
     /// citrusbattery:// links (see CitrusURL).
