@@ -9,16 +9,27 @@ struct PowerChart: View {
     /// Saved minutes and sleeps from the last 30 days.
     let minutes: [PowerMinute]
     let sleeps: [DateInterval]
-    @AppStorage(PreferenceKey.powerChartPeriod) private var period = PowerPeriod.live
+    @AppStorage(PreferenceKey.powerChartPeriod) private var chosenPeriod = PowerPeriod.live
     @ViewState private var selection: Date?
 
     private static let sleepColour = Color.indigo
 
+    /// Longer periods appear once there are records to fill them.
+    private var periods: [PowerPeriod] {
+        let start = [minutes.first?.start, sleeps.first?.start].compactMap { $0 }.min()
+        return PowerPeriod.available(recordedSince: start, now: Date())
+    }
+
+    /// The chosen period, or the longest offered if it isn't (yet) available.
+    private var period: PowerPeriod {
+        periods.contains(chosenPeriod) ? chosenPeriod : periods.last ?? .live
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Picker("Period", selection: $period) {
-                    ForEach(PowerPeriod.allCases) { Text($0.label).tag($0) }
+                Picker("Period", selection: Binding(get: { period }, set: { chosenPeriod = $0 })) {
+                    ForEach(periods) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -31,7 +42,7 @@ struct PowerChart: View {
                 historyCharts(now: Date())
             }
         }
-        .onChange(of: period) { _ in selection = nil }
+        .onChange(of: chosenPeriod) { _ in selection = nil }
     }
 
     // MARK: Live

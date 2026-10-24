@@ -1006,6 +1006,16 @@ struct FakeSMC: SMCReading {
                     chargePercent: charge, onAdapter: false)
     }
 
+    @Test func offersLongerPeriodsOnceThereAreRecordsForThem() {
+        let now = Self.start
+        let day = PowerPeriod.day.duration
+        #expect(PowerPeriod.available(recordedSince: nil, now: now) == [.live, .hour, .day])
+        #expect(PowerPeriod.available(recordedSince: now - day, now: now) == [.live, .hour, .day])
+        #expect(PowerPeriod.available(recordedSince: now - day - 60, now: now) == [.live, .hour, .day, .week])
+        #expect(PowerPeriod.available(recordedSince: now - 7 * day, now: now) == [.live, .hour, .day, .week])
+        #expect(PowerPeriod.available(recordedSince: now - 7 * day - 60, now: now) == PowerPeriod.allCases)
+    }
+
     @Test func aggregatesReadingsIntoMinutes() throws {
         var aggregator = PowerMinuteAggregator()
         #expect(aggregator.add(watts: 4, at: Self.start + 5, chargePercent: 80, onAdapter: false) == nil)

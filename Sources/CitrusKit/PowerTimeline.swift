@@ -97,6 +97,19 @@ public enum PowerPeriod: String, CaseIterable, Sendable, Identifiable {
         case .month: 30 * 86_400
         }
     }
+
+    /// The periods worth offering, given when recording began: 7 d once there's
+    /// more than 24 hours of records, 30 d once there's more than 7 days.
+    public static func available(recordedSince start: Date?, now: Date) -> [PowerPeriod] {
+        let span = start.map { now.timeIntervalSince($0) } ?? 0
+        return allCases.filter { period in
+            switch period {
+            case .live, .hour, .day: true
+            case .week: span > PowerPeriod.day.duration
+            case .month: span > PowerPeriod.week.duration
+            }
+        }
+    }
 }
 
 /// One plotted point of the power chart.
