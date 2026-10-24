@@ -107,7 +107,7 @@ enum ReadmeScreenshots {
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity, minHeight: 30, alignment: .trailing)
                 .background(Color.white.opacity(0.55))
-                MenuBarPanel(usesGlass: false)
+                MenuBarPanel()
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(Color(white: 0.965))
                         .shadow(color: .black.opacity(0.18), radius: 18, y: 8))

@@ -237,8 +237,6 @@ struct MenuBarPanel: View {
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
     @StateObject private var energy = SignificantEnergyMonitor()
-    /// Off for documentation captures, which have no desktop behind them to blur.
-    var usesGlass = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -313,7 +311,6 @@ struct MenuBarPanel: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .frame(width: 300)
-        .controlCentreBackground(usesGlass)
         .onAppear { energy.start() }
         .onDisappear { energy.stop() }
     }
@@ -409,128 +406,6 @@ private struct MenuMeter: View {
     }
 }
 
-/// Control Center's glass behind the panel, and the window clipped to its rounder
-/// corners: the window's frame still has the standard menu bar window's shape,
-/// which would show at the corners.
-@available(macOS 26, *)
-private struct PanelWindowShape: NSViewRepresentable {
-    static let cornerRadius: CGFloat = 18
-
-    func makeNSView(context: Context) -> NSView {
-        // AppKit's glass, looked up at run time so the app also builds with SDKs
-        // before macOS 26.
-        guard let type = NSClassFromString("NSGlassEffectView") as? NSView.Type else { return WindowWatcher() }
-        let glass = type.init(frame: .zero)
-        glass.setValue(Self.cornerRadius, forKey: "cornerRadius")
-        glass.setValue(WindowWatcher(), forKey: "contentView")
-        return glass
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    /// macOS draws the window's shadow from its corner mask, which still has the
-    /// standard shape; give the panel's window class one with the glass's corners.
-    @MainActor
-    static func roundShadow(of window: NSWindow) {
-        let selector = NSSelectorFromString("_cornerMask")
-        guard let method = class_getInstanceMethod(NSWindow.self, selector) else {
-            window.hasShadow = false
-            return
-        }
-        let block: @convention(block) (NSWindow) -> NSImage = { _ in cornerMask }
-        class_replaceMethod(type(of: window), selector, imp_implementationWithBlock(block),
-                            method_getTypeEncoding(method))
-        window.invalidateShadow()
-    }
-
-    /// A stretchable rounded rectangle with the glass's corners.
-    private static let cornerMask: NSImage = {
-        let side = cornerRadius * 2 + 1
-        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: cornerRadius, left: cornerRadius, bottom: cornerRadius, right: cornerRadius)
-        image.resizingMode = .stretch
-        return image
-    }()
-
-    /// How far the window's backdrop blurs what's behind it. The standard menu bar
-    /// window uses 60, which leaves only a haze; Control Center's menus let the
-    /// shapes behind show through.
-    static let backdropBlurRadius = 18.0
-
-    private final class WindowWatcher: NSView {
-        private var keyObserver: NSObjectProtocol?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
-            keyObserver = nil
-            guard let window, let frame = window.contentView?.superview else { return }
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            frame.wantsLayer = true
-            frame.layer?.cornerRadius = PanelWindowShape.cornerRadius
-            frame.layer?.cornerCurve = .continuous
-            frame.layer?.masksToBounds = true
-            PanelWindowShape.roundShadow(of: window)
-            fitWindow()
-            // The window is reused each time the panel opens, and its backdrop is
-            // set up again as it appears, so lighten the blur after that each time.
-            keyObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.lightenBackdropSoon() }
-            }
-            lightenBackdropSoon()
-        }
-
-        override func setFrameSize(_ newSize: NSSize) {
-            super.setFrameSize(newSize)
-            DispatchQueue.main.async { [weak self] in self?.fitWindow() }
-        }
-
-        private func lightenBackdropSoon() {
-            for delay in [0, 0.1, 0.4, 1.0] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.lightenBackdrop() }
-            }
-        }
-
-        /// Replaces the blur on the backdrop the standard menu bar window draws
-        /// under its content, which is what the glass shows.
-        private func lightenBackdrop() {
-            guard let layers = window?.contentView?.layer?.sublayers,
-                  let filterType = NSClassFromString("CAFilter") as? NSObject.Type else { return }
-            func filter(_ name: String) -> NSObject? {
-                filterType.perform(NSSelectorFromString("filterWithType:"), with: name)?.takeUnretainedValue() as? NSObject
-            }
-            for layer in layers where String(describing: type(of: layer)) == "CABackdropLayer" {
-                let current = (layer.filters as? [NSObject] ?? [])
-                    .first { $0.value(forKey: "name") as? String == "gaussianBlur" }?
-                    .value(forKey: "inputRadius") as? Double
-                guard current != PanelWindowShape.backdropBlurRadius,
-                      let saturate = filter("colorSaturate"), let blur = filter("gaussianBlur") else { continue }
-                saturate.setValue(1.8, forKey: "inputAmount")
-                blur.setValue(PanelWindowShape.backdropBlurRadius, forKey: "inputRadius")
-                layer.filters = [saturate, blur]
-            }
-        }
-
-        /// The window keeps its size when the panel's content changes while it's
-        /// closed (a row appearing or going), and its shadow would show the
-        /// difference; fit it to the glass, keeping the top under the menu bar.
-        private func fitWindow() {
-            guard let window, bounds.height > 0, abs(window.frame.height - bounds.height) > 0.5 else { return }
-            var frame = window.frame
-            frame.origin.y += frame.height - bounds.height
-            frame.size.height = bounds.height
-            window.setFrame(frame, display: true)
-            window.invalidateShadow()
-        }
-    }
-}
-
 /// A label with its value right-aligned in grey, as in macOS's own status menus.
 private struct ValueRow: View {
     let title: String
@@ -581,18 +456,6 @@ private struct MenuSeparator: View {
 }
 
 private extension View {
-    /// On macOS 26 and later, the glass and rounder corners of Control Center's
-    /// menus in place of the standard menu bar window's background.
-    @ViewBuilder
-    func controlCentreBackground(_ enabled: Bool) -> some View {
-        if #available(macOS 26, *), enabled {
-            containerBackground(.clear, for: .window)
-                .background(PanelWindowShape())
-        } else {
-            self
-        }
-    }
-
     /// The insets of a macOS menu item.
     func menuRowPadding(vertical: CGFloat = 4) -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
