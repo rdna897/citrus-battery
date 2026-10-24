@@ -364,22 +364,31 @@ private struct HistorySettings: View {
 private struct UpdateSettings: View {
     @EnvironmentObject private var updater: AppUpdater
 
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "(development build)"
+    }
+
     var body: some View {
         Form {
             Section {
-                LabeledContent("Installed version") {
-                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development build")
-                }
-                LabeledContent("Last checked") {
-                    if let date = updater.lastUpdateCheckDate {
-                        Text(date, format: .dateTime.month().day().hour().minute())
-                    } else {
-                        Text("Never")
-                    }
-                }
+                // As in Software Update: the version and when it was last checked,
+                // with the button beside them.
                 HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Citrus Battery \(version)")
+                        Group {
+                            if let date = updater.lastUpdateCheckDate {
+                                Text("Last checked \(date.formatted(.dateTime.month().day().hour().minute()))")
+                            } else {
+                                Text("Not checked yet")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                     Spacer()
-                    CheckForUpdatesButton(updater: updater)
+                    Button("Check Now", action: updater.checkForUpdates)
+                        .disabled(!updater.canCheckForUpdates)
                 }
             } footer: {
                 if !updater.isAvailable {
