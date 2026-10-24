@@ -57,9 +57,11 @@ struct PowerChart: View {
                     .foregroundStyle(.linearGradient(colors: [Color.accentColor.opacity(0.25), .clear],
                                                      startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
+                selectionRule(labelled: true)
             }
             .chartXAxis { timeAxis(labelled: true, domain: liveDomain) }
             .chartYAxisLabel("W")
+            .selectable($selection)
             .timeAxisTitle(period.axisTitle)
             .frame(height: 140)
         } else {
@@ -99,7 +101,7 @@ struct PowerChart: View {
                                 .foregroundStyle(Color.green.gradient)
                         }
                     }
-                    selectionRule
+                    selectionRule(labelled: true)
                 }
                 .chartXScale(domain: domain)
                 .chartXAxis { timeAxis(labelled: false, domain: domain) }
@@ -116,7 +118,8 @@ struct PowerChart: View {
                             .foregroundStyle(Color.accentColor.gradient)
                     }
                 }
-                selectionRule
+                // The time goes on the top chart: battery level, when there is one.
+                selectionRule(labelled: !hasCharge)
             }
             .chartXScale(domain: domain)
             .chartXAxis { timeAxis(labelled: false, domain: domain) }
@@ -137,12 +140,52 @@ struct PowerChart: View {
             .cornerRadius(1.5)
     }
 
+    /// A line at the hovered moment; labelled with its time on the top chart.
     @ChartContentBuilder
-    private var selectionRule: some ChartContent {
-        if let selection {
-            RuleMark(x: .value("Selected", selection))
-                .foregroundStyle(.secondary)
-                .lineStyle(StrokeStyle(lineWidth: 1))
+    private func selectionRule(labelled: Bool = false) -> some ChartContent {
+        // Hovering needs macOS 14 (see selectable), so selection is nil before it.
+        if #available(macOS 14, *), let selection {
+            if labelled {
+                rule(at: selection)
+                    .annotation(position: .top, spacing: 2,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        Text(selectionText(selection))
+                            .font(.caption2.monospacedDigit())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            // Opaque, like a tooltip, as it can cover the chart's title.
+                            .background(.regularMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(.separator))
+                    }
+            } else {
+                rule(at: selection)
+            }
+        }
+    }
+
+    private func rule(at date: Date) -> some ChartContent {
+        RuleMark(x: .value("Selected", date))
+            .foregroundStyle(.secondary)
+            .lineStyle(StrokeStyle(lineWidth: 1))
+    }
+
+    /// The exact hovered time, with the date once the period spans days; on the
+    /// live chart, also the power at that moment.
+    private func selectionText(_ date: Date) -> String {
+        switch period {
+        case .live:
+            let time = date.formatted(.dateTime.hour().minute().second())
+            guard let sample = live.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+            else { return time }
+            return time + String(format: " · %.1f W", sample.systemWatts)
+        case .hour:
+            return date.formatted(date: .omitted, time: .shortened)
+        case .day:
+            return Calendar.current.isDateInToday(date)
+                ? date.formatted(date: .omitted, time: .shortened)
+                : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        case .week, .month:
+            return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
         }
     }
 
@@ -166,7 +209,7 @@ struct PowerChart: View {
                     .foregroundStyle(Self.sleepColour.opacity(0.75))
                     .cornerRadius(2)
             }
-            selectionRule
+            selectionRule()
         }
         .chartXScale(domain: domain)
         .chartXAxis { timeAxis(labelled: true, domain: domain) }
