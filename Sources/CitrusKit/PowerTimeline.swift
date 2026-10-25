@@ -233,15 +233,20 @@ public enum PowerTimeline {
                             calendar: Calendar = .current) -> [PowerBar] {
         let width = barWidth(span: domain.upperBound.timeIntervalSince(domain.lowerBound))
         let line = chargeLine(minutes, in: domain, sleeps: sleeps)
-        let recorded = minutes.filter { domain.contains($0.start) }.sorted { $0.start < $1.start }
+        let recorded = sortedByStart(minutes.filter { domain.contains($0.start) })
         let midnight = calendar.startOfDay(for: domain.lowerBound)
         var start = midnight.addingTimeInterval(
             (domain.lowerBound.timeIntervalSince(midnight) / width).rounded(.down) * width)
         var bars: [PowerBar] = []
+        // Minutes are taken in order as the slots advance: one pass, not one per slot.
+        var next = 0
         while start < domain.upperBound {
             let end = start.addingTimeInterval(width)
             let slot = DateInterval(start: start, end: end)
-            let inSlot = recorded.filter { $0.start >= start && $0.start < end }
+            while next < recorded.count, recorded[next].start < start { next += 1 }
+            let first = next
+            while next < recorded.count, recorded[next].start < end { next += 1 }
+            let inSlot = recorded[first..<next]
             var watts: Double?
             if !inSlot.isEmpty {
                 let asleep = sleeps.compactMap { $0.intersection(with: slot)?.duration }.reduce(0, +) / 60
@@ -307,9 +312,20 @@ public enum PowerTimeline {
     /// inside a sleep, with back-to-back minutes joined.
     public static func briefWakes(_ minutes: [PowerMinute], sleeps: [DateInterval]) -> [BriefWake] {
         var wakes: [BriefWake] = []
-        for minute in minutes.sorted(by: { $0.start < $1.start }) {
+        // Both in order, so each minute is checked against the sleeps around it only.
+        let sleeps = sleeps.sorted { $0.start < $1.start }
+        var sleep = 0
+        for minute in sortedByStart(minutes) {
             let end = minute.start.addingTimeInterval(60)
-            guard sleeps.contains(where: { $0.start <= minute.start && end <= $0.end }) else { continue }
+            while sleep < sleeps.count, sleeps[sleep].end < end { sleep += 1 }
+            // Sleeps can overlap, so look on while one could still contain the minute.
+            var candidate = sleep
+            var inside = false
+            while candidate < sleeps.count, sleeps[candidate].start <= minute.start {
+                if end <= sleeps[candidate].end { inside = true; break }
+                candidate += 1
+            }
+            guard inside else { continue }
             if let last = wakes.last, last.end >= minute.start {
                 wakes[wakes.count - 1].end = end
                 wakes[wakes.count - 1].peakWatts = max(last.peakWatts, minute.peakWatts)
@@ -318,6 +334,12 @@ public enum PowerTimeline {
             }
         }
         return wakes
+    }
+
+    /// Saved minutes are kept in order, so this is usually just a check.
+    static func sortedByStart(_ minutes: [PowerMinute]) -> [PowerMinute] {
+        let ordered = zip(minutes, minutes.dropFirst()).allSatisfy { $0.start <= $1.start }
+        return ordered ? minutes : minutes.sorted { $0.start < $1.start }
     }
 
     /// Wakes grouped so that each group's neighbours are at most `gap` apart,

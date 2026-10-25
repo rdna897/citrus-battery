@@ -1541,3 +1541,17 @@ struct FakeSMC: SMCReading {
         #expect(blockers[2].reason == "Playing audio" && blockers[2].process == nil)
     }
 }
+
+@Suite struct PowerTimelinePassTests {
+    @Test func briefWakesHandleOverlappingAndUnorderedInput() {
+        let t = Date(timeIntervalSince1970: 1_792_000_000)
+        func minute(_ offset: TimeInterval) -> PowerMinute {
+            PowerMinute(start: t + offset, averageWatts: 2, peakWatts: 3, chargePercent: 50, onAdapter: false)
+        }
+        // A short sleep inside a long one, given out of order, and minutes out of order.
+        let sleeps = [DateInterval(start: t + 600, duration: 300), DateInterval(start: t, duration: 7200)]
+        let wakes = PowerTimeline.briefWakes([minute(3600), minute(660), minute(-120), minute(7200)], sleeps: sleeps)
+        // Inside: 660 (both sleeps) and 3600 (the long one). Outside: before it, and at its end.
+        #expect(wakes.map(\.start) == [t + 660, t + 3600])
+    }
+}

@@ -11,6 +11,8 @@ struct PowerChart: View {
     let sleeps: [DateInterval]
     @AppStorage(PreferenceKey.powerChartPeriod) private var chosenPeriod = PowerPeriod.live
     @ViewState private var selection: Date?
+    /// What the history charts draw, kept until the readings, period or minute change.
+    @ViewState private var cache = HistoryChartCache()
 
     private static let sleepColour = Color.indigo
 
@@ -75,11 +77,14 @@ struct PowerChart: View {
     /// the Mac's sleeps on a strip underneath.
     @ViewBuilder
     private func historyCharts(now: Date) -> some View {
-        let domain = PowerTimeline.domain(period: period, minutes: minutes, sleeps: sleeps, now: now)
+        // Redrawn with every live reading and pointer move; the bars only change
+        // when a minute is saved or the period changes.
+        let data = cache.data(period: period, minutes: minutes, sleeps: sleeps, now: now)
+        let domain = data.domain
         let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
-        let sleeps = PowerTimeline.sleeps(sleeps, in: domain)
-        let bars = PowerTimeline.bars(minutes, in: domain, sleeps: self.sleeps)
-        let wakes = PowerTimeline.briefWakes(minutes, sleeps: sleeps)
+        let sleeps = data.sleeps
+        let bars = data.bars
+        let wakes = data.wakes
         let hasCharge = bars.contains { $0.chargePercent != nil }
         let hasCharging = bars.contains { $0.onAdapter }
         if bars.isEmpty && sleeps.isEmpty {
@@ -286,10 +291,9 @@ struct PowerChart: View {
             if bar.onAdapter { parts.append("on power adapter") }
             text = parts.joined(separator: " · ")
         } else {
-            let recorded = minutes.filter { m in bars.contains { $0.start <= m.start && m.start < $0.end } }
-            let average = recorded.map(\.averageWatts).reduce(0, +) / Double(max(recorded.count, 1))
-            var parts = [String(format: "Average %.1f W while awake", average)]
-            if let peak = recorded.map(\.peakWatts).max() { parts.append(String(format: "peak %.1f W", peak)) }
+            let summary = cache.summary
+            var parts = [String(format: "Average %.1f W while awake", summary.average)]
+            if let peak = summary.peak { parts.append(String(format: "peak %.1f W", peak)) }
             let slept = sleeps.map(\.duration).reduce(0, +)
             if slept >= 60 {
                 // Whole hours are precise enough once sleeps add up.
@@ -366,5 +370,53 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+/// The history charts' bars, sleeps and wakes, worked out once per change of
+/// readings, period or minute rather than on every redraw. Not observed: it
+/// only saves work for the view that owns it.
+@MainActor
+final class HistoryChartCache {
+    struct Data {
+        var domain: ClosedRange<Date>
+        var sleeps: [DateInterval]
+        var bars: [PowerBar]
+        var wakes: [BriefWake]
+    }
+
+    private struct Key: Equatable {
+        var period: PowerPeriod
+        var minuteCount: Int
+        var lastMinute: Date?
+        var sleepCount: Int
+        var lastSleepEnd: Date?
+        var minute: Int
+    }
+
+    private var key: Key?
+    private var cached: Data?
+    /// Average and peak power over the bars' minutes, for the readout.
+    private(set) var summary: (average: Double, peak: Double?) = (0, nil)
+
+    func data(period: PowerPeriod, minutes: [PowerMinute], sleeps: [DateInterval], now: Date) -> Data {
+        let key = Key(period: period, minuteCount: minutes.count, lastMinute: minutes.last?.start,
+                      sleepCount: sleeps.count, lastSleepEnd: sleeps.last?.end,
+                      minute: Int(now.timeIntervalSince1970 / 60))
+        if key == self.key, let cached { return cached }
+        let domain = PowerTimeline.domain(period: period, minutes: minutes, sleeps: sleeps, now: now)
+        let inDomain = PowerTimeline.sleeps(sleeps, in: domain)
+        let bars = PowerTimeline.bars(minutes, in: domain, sleeps: sleeps)
+        let data = Data(domain: domain, sleeps: inDomain, bars: bars,
+                        wakes: PowerTimeline.briefWakes(minutes, sleeps: inDomain))
+        // Every recorded minute in the domain makes a bar, so the bars' span holds
+        // exactly the minutes they show.
+        let span = (bars.first?.start ?? .distantFuture)..<(bars.last?.end ?? .distantPast)
+        let recorded = span.isEmpty ? [] : minutes.filter { span.contains($0.start) }
+        summary = (recorded.map(\.averageWatts).reduce(0, +) / Double(max(recorded.count, 1)),
+                   recorded.map(\.peakWatts).max())
+        self.key = key
+        cached = data
+        return data
     }
 }
