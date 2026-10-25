@@ -408,7 +408,8 @@ struct FakeSMC: SMCReading {
                                    fullChargeCapacity: 4500, briefWakes: 2, wakesLogged: true)
         let source = try HistoryStore(url: nil)
         try source.insert(session)
-        try source.insert([DarkWake(date: night + 600, reason: .scheduledTask, detail: "com.apple.x"),
+        try source.insert([DarkWake(date: night + 600, reason: .scheduledTask, detail: "com.apple.x", seconds: 7,
+                                    holders: ["cloudd", "powerd"], apps: ["com.apple.Photos"]),
                            DarkWake(date: night + 1200, reason: .wireless)], loggedSessions: [])
         let backup = try source.exportBackup()
 
@@ -423,6 +424,37 @@ struct FakeSMC: SMCReading {
         // Version 1 backups, with entries only, still import.
         let v1 = Data(#"{"format":"citrus-battery-history","version":1,"entries":[]}"#.utf8)
         #expect(try target.importBackup(v1) == HistoryStore.BackupImport(entries: 0, sleepSessions: 0))
+        // Wakes from before durations, holders and apps were saved still import.
+        let early = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "darkWakes":[{"date":"2026-01-01T00:00:00Z","reason":"wireless"}]}
+            """#.utf8)
+        let fresh = try HistoryStore(url: nil)
+        _ = try fresh.importBackup(early)
+        #expect(try fresh.darkWakes().first?.holders == [])
+    }
+
+    @Test func wakesGainDetailsWithoutLosingThem() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let store = try HistoryStore(url: nil)
+        try store.insert(SleepSession(start: night, end: night + 3600, startCapacity: 4000, endCapacity: 3990,
+                                      fullChargeCapacity: 4500, wakesLogged: true))
+        let id = try #require(try store.sleepSessions().first?.id)
+        // Saved before durations were read, then read again.
+        try store.insert([DarkWake(date: night + 60, reason: .wireless)], loggedSessions: [id])
+        try store.insert([DarkWake(date: night + 60, reason: .wireless, seconds: 9, holders: ["cloudd"])],
+                         loggedSessions: [id])
+        #expect(try store.darkWakes() == [DarkWake(date: night + 60, reason: .wireless, seconds: 9,
+                                                   holders: ["cloudd"])])
+        try store.annotate([DarkWake(date: night + 60, reason: .pushNotification, seconds: 9, holders: ["cloudd"],
+                                     apps: ["com.apple.Photos"])], loggedSessions: [id])
+        #expect(try store.darkWakes().first?.reason == .pushNotification)
+        #expect(try store.darkWakes().first?.apps == ["com.apple.Photos"])
+        #expect(try store.sleepSessions().first?.appsLogged == true)
+        // Reading the power log again doesn't undo the system log's additions.
+        try store.insert([DarkWake(date: night + 60, reason: .wireless, seconds: 9, holders: ["cloudd"])],
+                         loggedSessions: [id])
+        #expect(try store.darkWakes().first?.reason == .pushNotification)
     }
 
     @Test func autoRecordDuplicateRule() {
@@ -1307,8 +1339,14 @@ struct FakeSMC: SMCReading {
     Time stamp                Domain              \tMessage
     2026-10-24 01:23:10 +0100 Sleep               \tEntering Sleep state due to 'Clamshell Sleep' Using Batt (Charge:80%) 30 secs
     2026-10-24 01:23:12 +0100 Wake Requests       \t[process=mDNSResponder request=Maintenance deltaSecs=7200 wakeAt=2026-10-24 03:23:12 info="upkeep wake"] [*process=dasd request=SleepService deltaSecs=999 wakeAt=2026-10-24 01:39:51 info="com.apple.dasd:501:com.apple.intelligenceflow.toolbox.update.fastpass"]
-    2026-10-24 01:39:51 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to NUB.SPMI0.SW3 nub-spmi0.0x02 rtc/SleepService Using BATT (Charge:80%) 7 secs
+    2026-10-24 01:39:51 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to NUB.SPMI0.SW3 nub-spmi0.0x02 rtc/SleepService Using BATT (Charge:80%) 7 secs    
+    2026-10-24 01:39:52 +0100 Assertions          \tPID 624(cloudd) Created SystemIsActive "com.apple.cloudd.sync" 00:00:00  id:0x0x1 [System: DeclUser]
+    2026-10-24 01:39:53 +0100 Assertions          \tPID 545(powerd) Created InternalPreventSleep "PM configd - Wait for Device enumeration" 00:00:00  id:0x0x2 [System: DeclUser]
+    2026-10-24 01:39:54 +0100 Assertions          \tPID 624(cloudd) Created SystemIsActive "com.apple.cloudd.sync" 00:00:00  id:0x0x3 [System: DeclUser]
+    2026-10-24 01:39:55 +0100 Assertions          \tPID 1000(sharingd) Released PreventUserIdleSystemSleep "Handoff" 00:08:23  id:0x0x4 [System: DeclUser]
+    2026-10-24 01:45:00 +0100 Assertions          \tPID 77(backupd) Created PreventSystemSleep "Backup" 00:00:00  id:0x0x5 [System: DeclUser]
     2026-10-24 01:40:00 +0100 Wake Requests       \t[*process=mDNSResponder request=Maintenance deltaSecs=7200 wakeAt=2026-10-24 03:40:00 info="upkeep wake"]
+    2026-10-24 03:39:59 +0100 Assertions          \tPID 700(mDNSResponder) Created MaintenanceWake "mDNSResponder:maintenance" 00:00:00  id:0x0x6 [System: DeclUser]
     2026-10-24 03:40:00 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to NUB.SPMI0.SW3 nub-spmi0.0x02 rtc/Maintenance Using BATT (Charge:79%) 5 secs
     2026-10-24 04:02:13 +0100 DarkWake            \tDarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.OutboxNotEmpty/ Using BATT (Charge:79%) 9 secs
     2026-10-24 05:10:00 +0100 Wake Requests       \t[*process=powerd request=UserWake deltaSecs=60 wakeAt=2026-10-24 05:11:00 info="com.apple.alarm.user-invisible-com.apple.acmd.alarm,532"]
@@ -1327,6 +1365,45 @@ struct FakeSMC: SMCReading {
         #expect(wakes[1].detail == "upkeep wake")
         #expect(wakes[2].detail == nil)
         #expect(wakes[3].detail == "com.apple.acmd.alarm")
+        #expect(wakes.map(\.seconds) == [7, 5, 9, 3])
+        // Assertions created during the wake, once each; not ones released, or made after it.
+        #expect(wakes[0].holders == ["cloudd", "powerd"])
+        // Made as the wake began, and logged just before it.
+        #expect(wakes[1].holders == ["mDNSResponder"])
+        #expect(wakes[2].holders.isEmpty)
+    }
+
+    @Test func readsAppsAndPushesFromTheSystemLog() throws {
+        let log = #"""
+        {"timestamp":"2026-10-24 04:02:14.120000+0100","eventMessage":"<private>: Received message for enabled topic '<private>' onInterface: <private>"}
+        {"timestamp":"2026-10-24 01:39:55.384585+0100","eventMessage":"NDSession <C4790A93> Client com.apple.cloudd is acting on behalf of com.apple.Photos"}
+        {"timestamp":"2026-10-24 01:39:56.000000+0100","eventMessage":"NDSession <C4790A94> Client com.dropbox.helper is acting on behalf of cloud"}
+        {"timestamp":"2026-10-24 02:30:00.000000+0100","eventMessage":"NDSession <C4790A95> Client com.apple.cloudd is acting on behalf of com.apple.Notes"}
+        {"count":4,"finished":1}
+        """#
+        let events = SystemLog.parse(log)
+        #expect(events.count == 4)
+        let (wakes, _) = WakeLog.parse(Self.log)
+        let annotated = SystemLog.annotate(wakes, with: events)
+        #expect(annotated[0].apps == ["com.apple.Photos", "com.dropbox.helper"])
+        // Notes worked between wakes, so it's no wake's.
+        #expect(annotated.allSatisfy { !$0.apps.contains("com.apple.Notes") })
+        // The Wi-Fi wake with a push arriving.
+        #expect(annotated.map(\.reason) == [.scheduledTask, .networkUpkeep, .pushNotification, .scheduledTask])
+        #expect(SystemLog.app(in: "Client com.apple.cloudd is acting on behalf of cloud") == nil)
+    }
+
+    @Test func breakdownAddsUpTimeAwakeAndHolders() {
+        let date = Date(timeIntervalSince1970: 0)
+        let breakdown = WakeBreakdown([
+            DarkWake(date: date, reason: .wireless, seconds: 5, holders: ["cloudd", "powerd"]),
+            DarkWake(date: date + 60, reason: .wireless, seconds: 9, holders: ["cloudd"], apps: ["com.apple.Photos"]),
+            DarkWake(date: date + 120, reason: .other),
+        ])
+        #expect(breakdown.secondsAwake == 14 && breakdown.timedWakes == 2)
+        #expect(breakdown.holders.map(\.name) == ["cloudd", "powerd"])
+        #expect(breakdown.holders.first?.count == 2)
+        #expect(breakdown.apps.map(\.name) == ["com.apple.Photos"])
     }
 
     @Test func breaksWakesDownForSleeps() {

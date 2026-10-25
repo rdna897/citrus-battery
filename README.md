@@ -107,6 +107,10 @@ Click any screenshot to see it at full resolution.
   chart and a sortable table. It also shows why the Mac woke (scheduled tasks, network
   upkeep, Wi-Fi or Bluetooth), read from macOS's power log, and which scheduled tasks
   woke it most, for the whole period or for the sleeps you pick in the chart or table.
+  Wake Details lists every brief wake with how long the Mac stayed awake, what kept it
+  awake, and which apps iCloud or background downloads worked for, and tells push
+  notifications apart from other Wi-Fi wakes. The system log is read once per sleep, at
+  background priority and preferably on the charger, so viewing the details costs nothing.
 - Permanent battery failure flags, decoded.
 - A notice when health falls below 80%, with a link to search for a replacement.
 

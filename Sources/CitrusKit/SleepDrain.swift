@@ -16,9 +16,13 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
     /// Whether macOS's power log covered the sleep, so its brief wakes' reasons
     /// were saved (see `WakeLog`).
     public var wakesLogged: Bool
+    /// Whether the system log was read for the sleep, adding apps and push
+    /// notifications to its brief wakes (see `SystemLog`).
+    public var appsLogged: Bool
 
     public init(id: Int64 = 0, start: Date, end: Date, startCapacity: Int, endCapacity: Int,
-                fullChargeCapacity: Int, briefWakes: Int? = nil, wakesLogged: Bool = false) {
+                fullChargeCapacity: Int, briefWakes: Int? = nil, wakesLogged: Bool = false,
+                appsLogged: Bool = false) {
         self.id = id
         self.start = start
         self.end = end
@@ -27,6 +31,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
         self.fullChargeCapacity = fullChargeCapacity
         self.briefWakes = briefWakes
         self.wakesLogged = wakesLogged
+        self.appsLogged = appsLogged
     }
 
     public var interval: DateInterval { DateInterval(start: start, end: end) }

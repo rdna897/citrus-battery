@@ -179,6 +179,10 @@ public final class HistoryStore: @unchecked Sendable {
         try renameLegacyColumn()
         try addColumnIfMissing(table: "sleep_sessions", column: "brief_wakes", type: "INTEGER")
         try addColumnIfMissing(table: "sleep_sessions", column: "wakes_logged", type: "INTEGER NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "sleep_sessions", column: "apps_logged", type: "INTEGER NOT NULL DEFAULT 0")
+        try addColumnIfMissing(table: "dark_wakes", column: "seconds", type: "INTEGER")
+        try addColumnIfMissing(table: "dark_wakes", column: "holders", type: "TEXT")
+        try addColumnIfMissing(table: "dark_wakes", column: "apps", type: "TEXT")
     }
 
     private func addColumnIfMissing(table: String, column: String, type: String) throws {
@@ -294,8 +298,8 @@ public final class HistoryStore: @unchecked Sendable {
         try locked {
             let statement = try prepare("""
                 INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity,
-                    brief_wakes, wakes_logged)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    brief_wakes, wakes_logged, apps_logged)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """)
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, session.start.timeIntervalSince1970)
@@ -305,32 +309,37 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 5, session.fullChargeCapacity)
             bind(statement, 6, session.briefWakes)
             bind(statement, 7, session.wakesLogged ? 1 : 0)
+            bind(statement, 8, session.appsLogged ? 1 : 0)
             try step(statement)
         }
     }
 
-    /// Saves brief wakes read from macOS's power log, skipping ones already saved,
-    /// and marks the sessions they were read for.
+    /// Saves brief wakes read from macOS's power log and marks the sessions they
+    /// were read for. A wake already saved takes the power log's duration and
+    /// holders, and keeps its reason and apps, which the system log may have refined.
     public func insert(_ wakes: [DarkWake], loggedSessions: [Int64]) throws {
         try locked {
             try execute("BEGIN")
             do {
-                let insert = try prepare("INSERT OR IGNORE INTO dark_wakes (date, reason, detail) VALUES (?, ?, ?)")
+                let insert = try prepare("""
+                    INSERT INTO dark_wakes (date, reason, detail, seconds, holders, apps) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(date) DO UPDATE SET
+                        seconds = COALESCE(excluded.seconds, dark_wakes.seconds),
+                        holders = COALESCE(excluded.holders, dark_wakes.holders),
+                        apps = COALESCE(dark_wakes.apps, excluded.apps)
+                    """)
                 defer { sqlite3_finalize(insert) }
                 for wake in wakes {
                     sqlite3_reset(insert)
                     bind(insert, 1, wake.date.timeIntervalSince1970)
                     bind(insert, 2, wake.reason.rawValue)
                     bind(insert, 3, wake.detail)
+                    bind(insert, 4, wake.seconds)
+                    bind(insert, 5, Self.list(wake.holders))
+                    bind(insert, 6, Self.list(wake.apps))
                     try step(insert)
                 }
-                let mark = try prepare("UPDATE sleep_sessions SET wakes_logged = 1 WHERE id = ?")
-                defer { sqlite3_finalize(mark) }
-                for id in loggedSessions {
-                    sqlite3_reset(mark)
-                    sqlite3_bind_int64(mark, 1, id)
-                    try step(mark)
-                }
+                try mark(loggedSessions, column: "wakes_logged")
                 try execute("COMMIT")
             } catch {
                 try? execute("ROLLBACK")
@@ -339,17 +348,65 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
+    /// Saves what the system log added to saved wakes (see `SystemLog`) and marks
+    /// the sessions it was read for.
+    public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64]) throws {
+        try locked {
+            try execute("BEGIN")
+            do {
+                let update = try prepare("UPDATE dark_wakes SET reason = ?, apps = ? WHERE date = ?")
+                defer { sqlite3_finalize(update) }
+                for wake in wakes {
+                    sqlite3_reset(update)
+                    bind(update, 1, wake.reason.rawValue)
+                    bind(update, 2, Self.list(wake.apps))
+                    bind(update, 3, wake.date.timeIntervalSince1970)
+                    try step(update)
+                }
+                try mark(loggedSessions, column: "apps_logged")
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
+        }
+    }
+
+    /// Lists are saved one item per line, or NULL when empty.
+    private static func list(_ items: [String]) -> String? {
+        items.isEmpty ? nil : items.joined(separator: "\n")
+    }
+
+    private static func list(_ text: String?) -> [String] {
+        text?.split(separator: "\n").map(String.init) ?? []
+    }
+
+    private func mark(_ sessions: [Int64], column: String) throws {
+        let mark = try prepare("UPDATE sleep_sessions SET \(column) = 1 WHERE id = ?")
+        defer { sqlite3_finalize(mark) }
+        for id in sessions {
+            sqlite3_reset(mark)
+            sqlite3_bind_int64(mark, 1, id)
+            try step(mark)
+        }
+    }
+
     /// Saved brief wakes, oldest first.
     public func darkWakes() throws -> [DarkWake] {
         try locked {
-            let statement = try prepare("SELECT date, reason, detail FROM dark_wakes ORDER BY date")
+            let statement = try prepare("""
+                SELECT date, reason, detail, seconds, holders, apps FROM dark_wakes ORDER BY date
+                """)
             defer { sqlite3_finalize(statement) }
             var result: [DarkWake] = []
             while sqlite3_step(statement) == SQLITE_ROW {
                 result.append(DarkWake(
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
                     reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
-                    detail: text(statement, 2)))
+                    detail: text(statement, 2),
+                    seconds: int(statement, 3),
+                    holders: Self.list(text(statement, 4)),
+                    apps: Self.list(text(statement, 5))))
             }
             return result
         }
@@ -371,7 +428,7 @@ public final class HistoryStore: @unchecked Sendable {
         try locked {
             let statement = try prepare("""
                 SELECT id, start, end, start_capacity, end_capacity, full_charge_capacity, brief_wakes,
-                    wakes_logged
+                    wakes_logged, apps_logged
                 FROM sleep_sessions ORDER BY end DESC
                 """)
             defer { sqlite3_finalize(statement) }
@@ -385,7 +442,8 @@ public final class HistoryStore: @unchecked Sendable {
                     endCapacity: int(statement, 4) ?? 0,
                     fullChargeCapacity: int(statement, 5) ?? 1,
                     briefWakes: int(statement, 6),
-                    wakesLogged: int(statement, 7) == 1))
+                    wakesLogged: int(statement, 7) == 1,
+                    appsLogged: int(statement, 8) == 1))
             }
             return result
         }
@@ -523,7 +581,8 @@ public final class HistoryStore: @unchecked Sendable {
 
     private struct Backup: Codable {
         var format = "citrus-battery-history"
-        /// 1: entries only. 2: also sleep sessions and their brief wakes.
+        /// 1: entries only. 2: also sleep sessions and their brief wakes, which
+        /// later gained optional durations, holders and apps.
         var version = 2
         var entries: [HistoryEntry]
         var sleepSessions: [BackupSleepSession]?
@@ -538,6 +597,7 @@ public final class HistoryStore: @unchecked Sendable {
         var fullChargeCapacity: Int
         var briefWakes: Int?
         var wakesLogged: Bool?
+        var appsLogged: Bool?
 
         init(_ session: SleepSession) {
             start = session.start
@@ -547,12 +607,13 @@ public final class HistoryStore: @unchecked Sendable {
             fullChargeCapacity = session.fullChargeCapacity
             briefWakes = session.briefWakes
             wakesLogged = session.wakesLogged
+            appsLogged = session.appsLogged
         }
 
         var session: SleepSession {
             SleepSession(start: start, end: end, startCapacity: startCapacity, endCapacity: endCapacity,
                          fullChargeCapacity: fullChargeCapacity, briefWakes: briefWakes,
-                         wakesLogged: wakesLogged ?? false)
+                         wakesLogged: wakesLogged ?? false, appsLogged: appsLogged ?? false)
         }
     }
 

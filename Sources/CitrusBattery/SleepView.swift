@@ -15,6 +15,7 @@ struct SleepView: View {
     /// Where the pointer last was over the chart. Clicking clears `hovered`
     /// before the tap arrives, so taps use this.
     @ViewState private var pointed: Date?
+    @ViewState private var showingWakeDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -253,6 +254,17 @@ struct SleepView: View {
                     .foregroundStyle(.secondary)
                     .help("Show the whole period")
                 }
+                Spacer()
+                if breakdown.total > 0 {
+                    Button("Show Details…") { showingWakeDetails = true }
+                        .controlSize(.small)
+                }
+            }
+            .sheet(isPresented: $showingWakeDetails) {
+                WakeDetailsView(title: picked.isEmpty ? periodTitle : (picked.count == 1 ? sleptText(picked[0])
+                                    : "\(picked.count) sleeps"),
+                                sessions: logged,
+                                wakes: WakeBreakdown.wakes(history.darkWakes, during: logged))
             }
             if breakdown.total == 0 {
                 Text(noReasonsMessage(logged: logged.count, of: scope.count))
@@ -262,12 +274,21 @@ struct SleepView: View {
             } else {
                 ReasonBar(breakdown: breakdown)
                     .frame(height: 8)
-                // One row when it fits, otherwise a column.
+                // One row when it fits, otherwise two columns.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 16) { reasonLegend(breakdown) }
-                    VStack(alignment: .leading, spacing: 4) { reasonLegend(breakdown) }
+                    LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading),
+                                        GridItem(.flexible(), alignment: .leading)],
+                              alignment: .leading, spacing: 4) { reasonLegend(breakdown) }
                 }
                 .font(.caption)
+                if breakdown.timedWakes > 0 {
+                    Text("Awake for \(WakeDetailsView.duration(seconds: breakdown.secondsAwake)) in all, "
+                        + "\(WakeDetailsView.duration(seconds: breakdown.secondsAwake / breakdown.timedWakes)) "
+                        + "a wake on average")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if !breakdown.tasks.isEmpty {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("Most scheduled")
@@ -308,6 +329,16 @@ struct SleepView: View {
             }
             .fixedSize()
             .help(item.reason.explanation)
+        }
+    }
+
+    /// The period, for the details sheet's heading: "Last 7 days", or the custom dates.
+    private var periodTitle: String {
+        switch period {
+        case .custom: from.formatted(date: .abbreviated, time: .omitted) + " – "
+            + to.formatted(date: .abbreviated, time: .omitted)
+        case .all: "All sleeps"
+        default: "Last " + period.label.lowercased()
         }
     }
 
@@ -404,7 +435,7 @@ struct SleepView: View {
     }
 }
 
-private enum SleepDateFormat {
+enum SleepDateFormat {
     /// "Sat 24 Oct", or "24 Oct 2025" with the year, where the weekday matters less
     /// and would make the column too wide.
     static func day(withYear: Bool) -> Date.FormatStyle {
@@ -423,7 +454,7 @@ private enum SleepDateFormat {
 
 /// A date and time in a table cell, with the date in a fixed-width slot so
 /// the times line up down the column.
-private struct DateTimeCell: View {
+struct DateTimeCell: View {
     let date: Date
     var withYear = false
     var showsDate = true
@@ -458,11 +489,12 @@ private struct ReasonBar: View {
     }
 }
 
-private extension WakeReason {
+extension WakeReason {
     /// Orange is left for high drain in the chart.
     var colour: Color {
         switch self {
         case .wireless: .blue
+        case .pushNotification: .pink
         case .scheduledTask: .purple
         case .networkUpkeep: .teal
         case .power: .green
@@ -472,7 +504,7 @@ private extension WakeReason {
 }
 
 /// A headline figure with a caption, for the top of a statistics page.
-private struct StatTile: View {
+struct StatTile: View {
     let title: String
     let value: String
     let detail: String

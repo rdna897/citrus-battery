@@ -36,6 +36,9 @@ final class HistoryController: ObservableObject {
     private var sleepReading: (date: Date, battery: MacBatterySnapshot)?
     private var sleepStarted: Date?
     private var powerAggregator = PowerMinuteAggregator()
+    /// Set while the system log is being read, so reads never overlap.
+    private var readingSystemLog = false
+    private var lastSystemLogCheck = Date.distantPast
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -206,11 +209,22 @@ final class HistoryController: ObservableObject {
     }
 
     /// Saves the reasons for brief wakes during sleeps that macOS's power log
-    /// still covers (about a week), since the log itself doesn't last.
+    /// still covers (about a week), since the log itself doesn't last. Sleeps
+    /// whose wakes were saved before durations were read are read again.
     private func importWakeLog() {
-        let pending = sleepSessions.filter { !$0.wakesLogged }
-        guard !pending.isEmpty, let store else { return }
-        Task.detached(priority: .utility) {
+        let logKept = Date().addingTimeInterval(-8 * 86_400)
+        let pending = sleepSessions.filter { session in
+            // Older sleeps are beyond the log, so reading it again can't help.
+            guard session.end > logKept else { return false }
+            guard session.wakesLogged else { return true }
+            let wakes = WakeBreakdown.wakes(darkWakes, during: [session])
+            return !wakes.isEmpty && wakes.allSatisfy { $0.seconds == nil }
+        }
+        guard !pending.isEmpty, let store else {
+            importSystemLogIfDue()
+            return
+        }
+        Task.detached(priority: .background) {
             guard let log = WakeLog.read() else { return }
             let (wakes, since) = WakeLog.parse(log)
             // Sessions the log covers from the start.
@@ -222,6 +236,53 @@ final class HistoryController: ObservableObject {
                 guard let self else { return }
                 self.perform { try store.insert(inSleeps, loggedSessions: covered.map(\.id)) }
                 self.reloadSleepSessions()
+                self.importSystemLogIfDue()
+            }
+        }
+    }
+
+    /// The system log is read for sleeps that ended this long ago at most; it
+    /// usually keeps a few days, depending on how busy the Mac is.
+    private static let systemLogReach: TimeInterval = 3 * 86_400
+    /// Waiting after waking keeps the read clear of the work macOS does then.
+    private static let systemLogDelay: TimeInterval = 3 * 60
+    /// On battery the read waits for the charger until a sleep is this old.
+    private static let systemLogBatteryGrace: TimeInterval = 12 * 3600
+
+    /// Reads the system log for recent sleeps not yet read, one sleep at a time
+    /// at background priority. On battery it waits for the charger, unless a
+    /// sleep would otherwise soon fall out of the log.
+    private func importSystemLogIfDue() {
+        guard !readingSystemLog, let store else { return }
+        let now = Date()
+        let pending = sleepSessions.filter { session in
+            session.wakesLogged && !session.appsLogged
+                && now.timeIntervalSince(session.end) < Self.systemLogReach
+                && now.timeIntervalSince(session.end) > Self.systemLogDelay
+                && !WakeBreakdown.wakes(darkWakes, during: [session]).isEmpty
+        }
+        guard let oldest = pending.map(\.end).min() else { return }
+        let charging = monitor?.battery?.isExternalPowerConnected ?? false
+        guard charging || now.timeIntervalSince(oldest) > Self.systemLogBatteryGrace else { return }
+        readingSystemLog = true
+        let wakes = darkWakes
+        Task.detached(priority: .background) {
+            for session in pending {
+                let during = WakeBreakdown.wakes(wakes, during: [session])
+                guard let first = during.first, let last = during.last else { continue }
+                // Only the span from the first wake to the end of the last, so
+                // `log` searches as little as possible. A read that fails or
+                // times out isn't retried, so it can't repeat its cost.
+                let text = SystemLog.read(from: first.date.addingTimeInterval(-5),
+                                          to: last.date.addingTimeInterval(TimeInterval((last.seconds ?? 0) + 10)))
+                let annotated = text.map { SystemLog.annotate(during, with: SystemLog.parse($0)) } ?? []
+                await MainActor.run { [weak self] in
+                    self?.perform { try store.annotate(annotated, loggedSessions: [session.id]) }
+                }
+            }
+            await MainActor.run { [weak self] in
+                self?.readingSystemLog = false
+                self?.reloadSleepSessions()
             }
         }
     }
@@ -241,6 +302,12 @@ final class HistoryController: ObservableObject {
     // MARK: Power timeline
 
     private func recordPower(_ power: PowerReadings) {
+        // Readings arrive every few seconds; checking whether the system log is
+        // due is cheap, but there's no need to do it more than every 10 minutes.
+        if Date().timeIntervalSince(lastSystemLogCheck) > 600 {
+            lastSystemLogCheck = Date()
+            importSystemLogIfDue()
+        }
         guard let watts = power.systemWatts else { return }
         let battery = monitor?.battery
         let charge = battery?.powerSource?.chargePercent
