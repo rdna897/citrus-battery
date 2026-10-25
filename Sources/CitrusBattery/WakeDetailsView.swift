@@ -39,7 +39,8 @@ struct WakeDetailsView: View {
                 }.map {
                     (name: WakeNames.process($0.name), count: $0.count)
                 }), empty: "Only macOS's own housekeeping.",
-                    help: "Processes that held the Mac awake, and in how many wakes.")
+                    help: "What held the Mac awake, and in how many wakes. Power management and network "
+                        + "presence take part in nearly every wake, so they aren't listed.")
                 RankedList(title: "Apps Using iCloud or Downloads", items: merged(breakdown.apps.map {
                     (name: AppNames.name(for: $0.name), count: $0.count)
                 }), empty: sessions.contains(where: \.appsLogged) ? "None during these wakes."
@@ -72,12 +73,9 @@ struct WakeDetailsView: View {
     }
 
     private var footnote: String {
-        var note = "From macOS's power log and system log. Apps are named when iCloud or background "
-            + "downloads worked for them; macOS doesn't record which app a push notification was for. "
-            + "Power management and network presence take part in nearly every wake, so they aren't listed."
+        var note = "macOS doesn't say which app a push notification was for."
         if sessions.contains(where: { !$0.appsLogged }) {
-            note += " Apps and push notifications are read soon after each sleep, so they're missing for "
-                + "sleeps from before then."
+            note += " Older sleeps don't have app names."
         }
         return note
     }
