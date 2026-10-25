@@ -57,6 +57,8 @@ final class HistoryController: ObservableObject {
             self.store = nil
             lastError = error.localizedDescription
         }
+        // Sleeps and wakes saved before Macs were recorded are this Mac's.
+        if let serial = thisMacSerial { perform { try self.store?.claimSleepData(for: serial) } }
         reload()
         observers.append(monitor.$battery
             .compactMap { $0 }
@@ -222,6 +224,7 @@ final class HistoryController: ObservableObject {
             return
         }
         session.briefWakes = SleepDrain.briefWakes(during: session, minutes: powerMinutes)
+        session.mac = thisMacSerial
         perform { try store.insert(session) }
         reloadSleepSessions()
         importWakeLog()
@@ -233,11 +236,12 @@ final class HistoryController: ObservableObject {
 
     private func reloadSleepSessions() {
         perform {
-            let wakes = try store?.darkWakes() ?? []
+            // Only this Mac's: a backup from another Mac may hold its sleeps too.
+            let wakes = try store?.darkWakes(mac: thisMacSerial) ?? []
             darkWakes = wakes
             // Where macOS's log covered a sleep, its count beats the estimate from
             // power readings, which joins wakes in back-to-back minutes.
-            sleepSessions = try (store?.sleepSessions() ?? []).map { session in
+            sleepSessions = try (store?.sleepSessions(mac: thisMacSerial) ?? []).map { session in
                 guard session.wakesLogged else { return session }
                 var counted = session
                 counted.briefWakes = WakeBreakdown.wakes(wakes, during: [session]).count
@@ -272,7 +276,13 @@ final class HistoryController: ObservableObject {
             let inSleeps = WakeBreakdown.wakes(wakes, during: covered)
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.perform { try store.insert(inSleeps, loggedSessions: covered.map(\.id)) }
+                let mac = self.thisMacSerial
+                let tagged = inSleeps.map { wake in
+                    var wake = wake
+                    wake.mac = mac
+                    return wake
+                }
+                self.perform { try store.insert(tagged, loggedSessions: covered.map(\.id)) }
                 self.reloadSleepSessions()
                 self.importSystemLogIfDue()
             }
@@ -444,23 +454,36 @@ final class HistoryController: ObservableObject {
         return data
     }
 
-    @discardableResult
-    func importBackup(_ data: Data) -> HistoryStore.BackupImport {
-        var added = HistoryStore.BackupImport(entries: 0, sleepSessions: 0)
-        perform { added = try store?.importBackup(data) ?? added }
+    /// Imports a backup in the background, all or nothing. Returns what was
+    /// added, or nil if it failed, with the reason in `lastError`.
+    func importBackup(_ data: Data) async -> HistoryStore.BackupImport? {
+        guard let store else { return nil }
+        let mac = thisMacSerial
+        let result = await Task.detached(priority: .userInitiated) {
+            Result { try store.importBackup(data, mac: mac) }
+        }.value
         reload()
-        return added
+        return finish(result)
     }
 
-    /// Imports a `.ccba` backup. Returns the number of entries added.
-    func importCoconutBatteryBackup(_ data: Data) -> Int {
-        var added = 0
-        perform {
-            let entries = try CoconutBatteryBackup.entries(from: data)
-            added = try store?.importEntries(entries) ?? 0
-        }
+    /// Imports a `.ccba` backup in the background. Returns the number of
+    /// entries added, or nil if it failed, with the reason in `lastError`.
+    func importCoconutBatteryBackup(_ data: Data) async -> Int? {
+        guard let store else { return nil }
+        let result = await Task.detached(priority: .userInitiated) {
+            Result { try store.importEntries(try CoconutBatteryBackup.entries(from: data)) }
+        }.value
         reload()
-        return added
+        return finish(result)
+    }
+
+    private func finish<T>(_ result: Result<T, Error>) -> T? {
+        switch result {
+        case let .success(value): return value
+        case let .failure(error):
+            lastError = error.localizedDescription
+            return nil
+        }
     }
 
     func reportError(_ message: String) {

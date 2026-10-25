@@ -54,21 +54,24 @@ public struct DarkWake: Sendable, Equatable, Codable, Identifiable {
     /// Apps that iCloud or background downloads worked for during the wake, by
     /// bundle identifier, from the system log.
     public var apps: [String]
+    /// The Mac it was on, by serial number; nil if saved before this was recorded.
+    public var mac: String?
 
     public init(date: Date, reason: WakeReason, detail: String? = nil, seconds: Int? = nil,
-                holders: [String] = [], apps: [String] = []) {
+                holders: [String] = [], apps: [String] = [], mac: String? = nil) {
         self.date = date
         self.reason = reason
         self.detail = detail
         self.seconds = seconds
         self.holders = holders
         self.apps = apps
+        self.mac = mac
     }
 
     /// Wakes are saved by time, which is unique.
     public var id: Date { date }
 
-    private enum CodingKeys: String, CodingKey { case date, reason, detail, seconds, holders, apps }
+    private enum CodingKeys: String, CodingKey { case date, reason, detail, seconds, holders, apps, mac }
 
     // Backups from before durations and holders were saved lack them.
     public init(from decoder: Decoder) throws {
@@ -79,6 +82,7 @@ public struct DarkWake: Sendable, Equatable, Codable, Identifiable {
         seconds = try container.decodeIfPresent(Int.self, forKey: .seconds)
         holders = try container.decodeIfPresent([String].self, forKey: .holders) ?? []
         apps = try container.decodeIfPresent([String].self, forKey: .apps) ?? []
+        mac = try container.decodeIfPresent(String.self, forKey: .mac)
     }
 }
 

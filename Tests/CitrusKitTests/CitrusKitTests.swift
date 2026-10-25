@@ -471,6 +471,64 @@ struct FakeSMC: SMCReading {
         #expect(backwards.interval.duration == 0)
     }
 
+    @Test func sleepsFromAnotherMacStayApart() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        func session(_ offset: TimeInterval, mac: String?) -> SleepSession {
+            SleepSession(start: night + offset, end: night + offset + 3600, startCapacity: 4000, endCapacity: 3990,
+                         fullChargeCapacity: 4500, mac: mac)
+        }
+        let old = try HistoryStore(url: nil)
+        try old.insert(session(0, mac: "OLDMAC"))
+        try old.insert([DarkWake(date: night + 60, reason: .wireless, mac: "OLDMAC")], loggedSessions: [])
+        let backup = try old.exportBackup()
+
+        let store = try HistoryStore(url: nil)
+        // Saved before Macs were recorded, then claimed by the Mac running the app.
+        try store.insert(session(86_400, mac: nil))
+        try store.claimSleepData(for: "NEWMAC")
+        #expect(try store.sleepSessions().map(\.mac) == ["NEWMAC"])
+        // The old Mac's sleep at the same time as one of this Mac's is still its own.
+        try store.insert(session(0, mac: "NEWMAC"))
+        #expect(try store.importBackup(backup, mac: "NEWMAC").sleepSessions == 1)
+        #expect(try store.sleepSessions(mac: "NEWMAC").count == 2)
+        #expect(try store.sleepSessions(mac: "OLDMAC").count == 1)
+        #expect(try store.darkWakes(mac: "NEWMAC").isEmpty)
+        #expect(try store.darkWakes(mac: "OLDMAC").count == 1)
+        // A backup from before Macs were recorded is taken to be this Mac's.
+        let legacy = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "sleepSessions":[{"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,
+                               "endCapacity":3900,"fullChargeCapacity":4500}]}
+            """#.utf8)
+        _ = try store.importBackup(legacy, mac: "NEWMAC")
+        #expect(try store.sleepSessions(mac: "NEWMAC").count == 3)
+    }
+
+    @Test func importingANewerBackupAddsWhatItKnows() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let base = SleepSession(start: night, end: night + 3600, startCapacity: 4000, endCapacity: 3990,
+                                fullChargeCapacity: 4500, mac: "M")
+        let store = try HistoryStore(url: nil)
+        try store.insert(base)
+        try store.insert([DarkWake(date: night + 60, reason: .wireless, seconds: 5, apps: ["com.apple.Photos"],
+                                   mac: "M")], loggedSessions: [])
+        // A later backup of the same sleep, after the system log was read for it.
+        let newer = try HistoryStore(url: nil)
+        var read = base
+        read.wakesLogged = true
+        read.appsLogged = true
+        read.briefWakes = 1
+        try newer.insert(read)
+        try newer.insert([DarkWake(date: night + 60, reason: .pushNotification, apps: ["com.apple.Notes"], mac: "M")],
+                         loggedSessions: [])
+        #expect(try store.importBackup(newer.exportBackup(), mac: "M").sleepSessions == 0)
+        let session = try #require(try store.sleepSessions().first)
+        #expect(session.wakesLogged && session.appsLogged && session.briefWakes == 1)
+        let wake = try #require(try store.darkWakes().first)
+        #expect(wake.reason == .pushNotification && wake.seconds == 5)
+        #expect(wake.apps == ["com.apple.Photos", "com.apple.Notes"])
+    }
+
     @Test func failedSystemLogReadsAreToldApart() throws {
         let night = Date(timeIntervalSince1970: 1_792_000_000)
         let store = try HistoryStore(url: nil)

@@ -22,10 +22,12 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
     /// Whether that read failed (or timed out), so the sleep's apps and push
     /// notifications are unknown rather than none. Failed reads aren't retried.
     public var appsReadFailed: Bool
+    /// The Mac it was on, by serial number; nil if saved before this was recorded.
+    public var mac: String?
 
     public init(id: Int64 = 0, start: Date, end: Date, startCapacity: Int, endCapacity: Int,
                 fullChargeCapacity: Int, briefWakes: Int? = nil, wakesLogged: Bool = false,
-                appsLogged: Bool = false, appsReadFailed: Bool = false) {
+                appsLogged: Bool = false, appsReadFailed: Bool = false, mac: String? = nil) {
         self.id = id
         self.start = start
         self.end = end
@@ -36,6 +38,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
         self.wakesLogged = wakesLogged
         self.appsLogged = appsLogged
         self.appsReadFailed = appsReadFailed
+        self.mac = mac
     }
 
     /// `DateInterval` traps when the end is before the start, so a damaged
