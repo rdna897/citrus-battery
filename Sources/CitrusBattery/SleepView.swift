@@ -12,6 +12,9 @@ struct SleepView: View {
     @ViewState private var sortOrder = [KeyPathComparator(\SleepSession.end, order: .reverse)]
     @ViewState private var selection = Set<SleepSession.ID>()
     @ViewState private var hovered: Date?
+    /// Where the pointer last was over the chart. Clicking clears `hovered`
+    /// before the tap arrives, so taps use this.
+    @ViewState private var pointed: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,14 +31,11 @@ struct SleepView: View {
             } else {
                 summary(SleepStats(sessions))
                     .padding(16)
-                HStack(alignment: .top, spacing: 16) {
-                    chart
-                    wakeReasons
-                        .frame(width: 270)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-                .frame(height: 200)
+                chart
+                    .padding(.horizontal, 16)
+                    .frame(height: 190)
+                wakeReasons
+                    .padding(16)
                 Divider()
                 table
             }
@@ -48,6 +48,17 @@ struct SleepView: View {
     /// The sleeps in the chosen period, newest first.
     private var sessions: [SleepSession] {
         period.sessions(history.sleepSessions, from: from, to: to, now: Date())
+    }
+
+    /// The sleeps picked in the chart or table, if they're in the period.
+    private var selectedSessions: [SleepSession] {
+        sessions.filter { selection.contains($0.id) }
+    }
+
+    /// Clicking a bar picks its sleep; clicking it again shows the whole period.
+    private func select(_ session: SleepSession?) {
+        guard let session else { return }
+        selection = selection == [session.id] ? [] : [session.id]
     }
 
     // MARK: Header
@@ -121,6 +132,8 @@ struct SleepView: View {
         let points = sessions.reversed()
         let barWidth: CGFloat = points.count > 60 ? 2 : points.count > 20 ? 5 : 10
         let hoveredSession = hovered.flatMap(nearestSession)
+        // Picked and hovered sleeps stand out; the rest fade while there are any.
+        let emphasised = Set(selectedSessions.map(\.id) + [hoveredSession?.id].compactMap { $0 })
         // Room either side so the first and last bars aren't cut in half.
         let first = points.first?.end ?? Date(), last = points.last?.end ?? Date()
         let padding = max(last.timeIntervalSince(first) * 0.03, 6 * 3600)
@@ -130,11 +143,11 @@ struct SleepView: View {
                 .foregroundStyle(.secondary)
             Chart {
                 ForEach(points) { session in
-                    BarMark(x: .value("Woke", session.end), y: .value("Drain", session.lossPerHour * 100),
+                    BarMark(x: .value("Woke", session.end, unit: .minute), y: .value("Drain", session.lossPerHour * 100),
                             width: .fixed(barWidth))
                         .foregroundStyle(session.isHighLoss ? Color.orange : Color.accentColor)
                         .cornerRadius(2)
-                        .opacity(hoveredSession == nil || hoveredSession?.id == session.id ? 1 : 0.4)
+                        .opacity(emphasised.isEmpty || emphasised.contains(session.id) ? 1 : 0.35)
                 }
                 RuleMark(y: .value("High", SleepDrain.highLossPerHour * 100))
                     .foregroundStyle(.secondary)
@@ -168,7 +181,11 @@ struct SleepView: View {
                     AxisValueLabel { Text(String(format: "%.1f%%", value.as(Double.self) ?? 0)) }
                 }
             }
-            .hoverable($hovered)
+            .hoverable(Binding(get: { hovered }, set: {
+                hovered = $0
+                if let date = $0 { pointed = date }
+            }))
+            .onTapGesture { select(pointed.flatMap(nearestSession)) }
             HStack(spacing: 14) {
                 legendItem(.accentColor, "Drain per hour")
                 if points.contains(where: \.isHighLoss) { legendItem(.orange, "Higher than usual") }
@@ -199,7 +216,7 @@ struct SleepView: View {
             }
             if session.wakesLogged,
                let top = WakeBreakdown(WakeBreakdown.wakes(history.darkWakes, during: [session])).reasons.first {
-                Text("Mostly \(top.reason.label.lowercased()) (\(top.count))")
+                Text("Main reason: \(top.reason.label) (\(top.count))")
             }
         }
         .font(.caption.monospacedDigit())
@@ -211,54 +228,97 @@ struct SleepView: View {
 
     // MARK: Wake reasons
 
-    /// Why macOS woke the Mac during the period's sleeps, from its power log.
+    /// Why macOS woke the Mac during the picked sleeps, or else the period's,
+    /// from its power log.
     private var wakeReasons: some View {
-        let logged = sessions.filter(\.wakesLogged)
+        let picked = selectedSessions
+        let scope = picked.isEmpty ? sessions : picked
+        let logged = scope.filter(\.wakesLogged)
         let breakdown = WakeBreakdown(WakeBreakdown.wakes(history.darkWakes, during: logged))
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("Why It Woke")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Why It Woke")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if !picked.isEmpty {
+                    Text("·").foregroundStyle(.tertiary)
+                    Text(picked.count == 1 ? sleptText(picked[0]) : "\(picked.count) sleeps")
+                        .font(.caption.weight(.semibold))
+                    Button {
+                        selection = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Show the whole period")
+                }
+            }
             if breakdown.total == 0 {
-                Text(logged.isEmpty
-                    ? "Reasons are read from macOS's power log, which keeps about a week, so they're "
-                        + "available for sleeps from the last week onwards."
-                    : "No brief wakes in these sleeps.")
+                Text(noReasonsMessage(logged: logged.count, of: scope.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach(breakdown.reasons, id: \.reason) { item in
-                    ReasonRow(label: item.reason.label, count: item.count,
-                              fraction: Double(item.count) / Double(breakdown.total))
-                        .help(item.reason.explanation)
+                ReasonBar(breakdown: breakdown)
+                    .frame(height: 8)
+                // One row when it fits, otherwise a column.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) { reasonLegend(breakdown) }
+                    VStack(alignment: .leading, spacing: 4) { reasonLegend(breakdown) }
                 }
+                .font(.caption)
                 if !breakdown.tasks.isEmpty {
-                    Text("Most Scheduled")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
-                    ForEach(breakdown.tasks.prefix(3), id: \.name) { task in
-                        HStack {
-                            Text(task.name)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .help(task.name)
-                            Spacer(minLength: 8)
-                            Text("\(task.count)").monospacedDigit().foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Most scheduled")
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(breakdown.tasks.prefix(3), id: \.name) { task in
+                                HStack(spacing: 6) {
+                                    Text(task.name)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .help(task.name)
+                                    Text("\(task.count)").monospacedDigit().foregroundStyle(.secondary)
+                                }
+                            }
                         }
-                        .font(.caption)
                     }
+                    .font(.caption)
                 }
-                if logged.count < sessions.count {
-                    Text("For \(logged.count) of \(sessions.count) sleeps: macOS's power log keeps about a week.")
+                if logged.count < scope.count {
+                    Text("For \(logged.count) of \(scope.count) sleeps: macOS's power log keeps about a week.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func reasonLegend(_ breakdown: WakeBreakdown) -> some View {
+        ForEach(breakdown.reasons, id: \.reason) { item in
+            HStack(spacing: 5) {
+                Circle().fill(item.reason.colour).frame(width: 8, height: 8)
+                Text(item.reason.label)
+                Text("\(item.count) · \(Int((Double(item.count) / Double(breakdown.total) * 100).rounded()))%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize()
+            .help(item.reason.explanation)
+        }
+    }
+
+    private func noReasonsMessage(logged: Int, of count: Int) -> String {
+        if logged > 0 { return count == 1 ? "No brief wakes in this sleep." : "No brief wakes in these sleeps." }
+        if !selectedSessions.isEmpty {
+            return (count == 1 ? "This sleep is" : "These sleeps are")
+                + " older than macOS's power log, which keeps about a week."
+        }
+        return "Reasons are read from macOS's power log, which keeps about a week, so they're "
+            + "available for sleeps from the last week onwards."
     }
 
     private func legendItem(_ colour: Color, _ title: String) -> some View {
@@ -300,6 +360,7 @@ struct SleepView: View {
             }
             .width(80)
         }
+        .onExitCommand { selection = [] }
     }
 
     /// "Fri 23 Oct, 22:40 – 07:12".
@@ -320,30 +381,35 @@ struct SleepView: View {
     }
 }
 
-/// A wake reason with its count and a bar for its share.
-private struct ReasonRow: View {
-    let label: String
-    let count: Int
-    let fraction: Double
+/// Each wake reason's share, as one bar split by colour.
+private struct ReasonBar: View {
+    let breakdown: WakeBreakdown
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                Spacer()
-                Text("\(count) · \(Int((fraction * 100).rounded()))%")
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule().fill(Color.accentColor)
-                        .frame(width: max(geometry.size.width * fraction, 3))
+        GeometryReader { geometry in
+            let gaps = CGFloat(breakdown.reasons.count - 1) * 2
+            HStack(spacing: 2) {
+                ForEach(breakdown.reasons, id: \.reason) { item in
+                    Rectangle()
+                        .fill(item.reason.colour)
+                        .frame(width: max((geometry.size.width - gaps) * Double(item.count)
+                            / Double(breakdown.total), 3))
                 }
             }
-            .frame(height: 4)
+            .clipShape(Capsule())
+        }
+    }
+}
+
+private extension WakeReason {
+    /// Orange is left for high drain in the chart.
+    var colour: Color {
+        switch self {
+        case .wireless: .blue
+        case .scheduledTask: .purple
+        case .networkUpkeep: .teal
+        case .power: .green
+        case .other: .gray
         }
     }
 }
