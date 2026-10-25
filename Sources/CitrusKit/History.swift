@@ -64,14 +64,16 @@ public struct HistoryDevice: Identifiable, Sendable, Equatable {
     public var id: String { serial }
 }
 
-public enum HistoryError: Error, LocalizedError {
+public enum HistoryError: Error, LocalizedError, Equatable {
     case database(String)
     case unreadableBackup
+    case damagedBackup
 
     public var errorDescription: String? {
         switch self {
         case let .database(message): "History database error: \(message)"
         case .unreadableBackup: "This file isn't a Citrus Battery history backup."
+        case .damagedBackup: "This backup has damaged sleep records, so nothing was imported."
         }
     }
 }
@@ -255,7 +257,7 @@ public final class HistoryStore: @unchecked Sendable {
             if let deviceSerial { bind(statement, 1, deviceSerial) }
 
             var result: [HistoryEntry] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
                 result.append(HistoryEntry(
                     id: sqlite3_column_int64(statement, 0),
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
@@ -407,7 +409,7 @@ public final class HistoryStore: @unchecked Sendable {
                 """)
             defer { sqlite3_finalize(statement) }
             var result: [DarkWake] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
                 result.append(DarkWake(
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
                     reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
@@ -441,7 +443,11 @@ public final class HistoryStore: @unchecked Sendable {
                 """)
             defer { sqlite3_finalize(statement) }
             var result: [SleepSession] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
+                // Skip rows that can't be shown, such as one saved from a damaged
+                // backup before backups were checked.
+                guard sqlite3_column_double(statement, 2) > sqlite3_column_double(statement, 1),
+                      (int(statement, 5) ?? 0) > 0 else { return }
                 result.append(SleepSession(
                     id: sqlite3_column_int64(statement, 0),
                     start: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
@@ -487,7 +493,7 @@ public final class HistoryStore: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, date.timeIntervalSince1970)
             var result: [PowerMinute] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
                 result.append(PowerMinute(
                     start: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
                     averageWatts: sqlite3_column_double(statement, 1),
@@ -550,8 +556,8 @@ public final class HistoryStore: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, (date.timeIntervalSince1970 / 3600).rounded(.down) * 3600)
             var result: [(app: String, total: AppUsage, onBattery: AppUsage)] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
-                guard let app = text(statement, 0) else { continue }
+            try forEachRow(statement) {
+                guard let app = text(statement, 0) else { return }
                 result.append((app, AppUsage(joules: sqlite3_column_double(statement, 1),
                                              cpuSeconds: sqlite3_column_double(statement, 3)),
                                AppUsage(joules: sqlite3_column_double(statement, 2))))
@@ -590,9 +596,9 @@ public final class HistoryStore: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, date.timeIntervalSince1970)
             var result: [DateInterval] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
                 let start = sqlite3_column_double(statement, 0), end = sqlite3_column_double(statement, 1)
-                guard end >= start else { continue }
+                guard end >= start else { return }
                 result.append(DateInterval(start: Date(timeIntervalSince1970: start),
                                            end: Date(timeIntervalSince1970: end)))
             }
@@ -621,7 +627,7 @@ public final class HistoryStore: @unchecked Sendable {
                 """)
             defer { sqlite3_finalize(statement) }
             var result: [HistoryDevice] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
+            try forEachRow(statement) {
                 result.append(HistoryDevice(
                     serial: text(statement, 0) ?? "",
                     name: text(statement, 1) ?? "",
@@ -690,6 +696,19 @@ public final class HistoryStore: @unchecked Sendable {
             appsLogged = session.appsLogged
         }
 
+        /// Whether the session makes sense: it ends after it starts, and its
+        /// capacities can be divided by and compared. A hand-edited or damaged
+        /// backup could otherwise save a session that can't be shown.
+        var isValid: Bool {
+            start.timeIntervalSince1970.isFinite && end.timeIntervalSince1970.isFinite && end > start
+                && fullChargeCapacity > 0 && (0...Self.maximumCapacity).contains(startCapacity)
+                && (0...Self.maximumCapacity).contains(endCapacity)
+                && fullChargeCapacity <= Self.maximumCapacity && (briefWakes ?? 0) >= 0
+        }
+
+        /// Well above any Mac battery (mAh), to catch nonsense rather than to judge.
+        static let maximumCapacity = 100_000
+
         var session: SleepSession {
             SleepSession(start: start, end: end, startCapacity: startCapacity, endCapacity: endCapacity,
                          fullChargeCapacity: fullChargeCapacity, briefWakes: briefWakes,
@@ -727,6 +746,10 @@ public final class HistoryStore: @unchecked Sendable {
         guard let backup = try? decoder.decode(Backup.self, from: data),
               backup.format == "citrus-battery-history"
         else { throw HistoryError.unreadableBackup }
+        // Check everything before writing anything, so a bad backup changes nothing.
+        guard (backup.sleepSessions ?? []).allSatisfy(\.isValid),
+              (backup.darkWakes ?? []).allSatisfy({ $0.date.timeIntervalSince1970.isFinite && ($0.seconds ?? 0) >= 0 })
+        else { throw HistoryError.damagedBackup }
         let entries = try importEntries(backup.entries)
         var existing = Set(try sleepSessions().map { Int($0.start.timeIntervalSince1970) })
         var sessions = 0
@@ -779,6 +802,18 @@ public final class HistoryStore: @unchecked Sendable {
             throw HistoryError.database(String(cString: sqlite3_errmsg(db)))
         }
         return statement
+    }
+
+    /// Calls `row` for each row of a query, and throws if SQLite stops with an
+    /// error partway, rather than handing back the rows read so far as if complete.
+    private func forEachRow(_ statement: OpaquePointer?, _ row: () throws -> Void) throws {
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW: try row()
+            case SQLITE_DONE: return
+            default: throw HistoryError.database(String(cString: sqlite3_errmsg(db)))
+            }
+        }
     }
 
     private func step(_ statement: OpaquePointer?) throws {

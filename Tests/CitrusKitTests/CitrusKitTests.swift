@@ -434,6 +434,43 @@ struct FakeSMC: SMCReading {
         #expect(try fresh.darkWakes().first?.holders == [])
     }
 
+    @Test func damagedBackupsChangeNothing() throws {
+        let store = try HistoryStore(url: nil)
+        // A sleep ending before it starts, alongside a sound one.
+        let damaged = Data(#"""
+            {"format":"citrus-battery-history","version":2,
+             "entries":[],
+             "sleepSessions":[
+                {"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,"endCapacity":3900,
+                 "fullChargeCapacity":4500},
+                {"start":"2026-01-03T08:00:00Z","end":"2026-01-03T00:00:00Z","startCapacity":4000,"endCapacity":3900,
+                 "fullChargeCapacity":4500,"wakesLogged":true}]}
+            """#.utf8)
+        #expect(throws: HistoryError.damagedBackup) { try store.importBackup(damaged) }
+        // Not even the sound one was saved.
+        #expect(try store.sleepSessions().isEmpty)
+        let noCapacity = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "sleepSessions":[{"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,
+                               "endCapacity":3900,"fullChargeCapacity":0}]}
+            """#.utf8)
+        #expect(throws: HistoryError.damagedBackup) { try store.importBackup(noCapacity) }
+    }
+
+    @Test func damagedSessionsAlreadySavedAreSkipped() throws {
+        let store = try HistoryStore(url: nil)
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        try store.insert(SleepSession(start: night, end: night - 3600, startCapacity: 4000, endCapacity: 3990,
+                                      fullChargeCapacity: 4500, wakesLogged: true))
+        try store.insert(SleepSession(start: night, end: night + 3600, startCapacity: 4000, endCapacity: 3990,
+                                      fullChargeCapacity: 4500))
+        #expect(try store.sleepSessions().count == 1)
+        // And a damaged session reads as an instant rather than trapping.
+        let backwards = SleepSession(start: night, end: night - 60, startCapacity: 1, endCapacity: 1,
+                                     fullChargeCapacity: 1)
+        #expect(backwards.interval.duration == 0)
+    }
+
     @Test func wakesGainDetailsWithoutLosingThem() throws {
         let night = Date(timeIntervalSince1970: 1_792_000_000)
         let store = try HistoryStore(url: nil)

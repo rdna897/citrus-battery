@@ -34,7 +34,9 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
         self.appsLogged = appsLogged
     }
 
-    public var interval: DateInterval { DateInterval(start: start, end: end) }
+    /// `DateInterval` traps when the end is before the start, so a damaged
+    /// session reads as an instant rather than crashing.
+    public var interval: DateInterval { DateInterval(start: start, end: max(start, end)) }
 
     /// Higher than Apple silicon Macs usually lose, over a sleep long enough to tell.
     public var isHighLoss: Bool {
