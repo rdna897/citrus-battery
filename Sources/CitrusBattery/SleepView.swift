@@ -9,7 +9,7 @@ struct SleepView: View {
     @AppStorage(PreferenceKey.sleepPeriod) private var period = SleepPeriod.month
     @ViewState private var from = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     @ViewState private var to = Date()
-    @ViewState private var sortOrder = [KeyPathComparator(\SleepSession.end, order: .reverse)]
+    @ViewState private var sortOrder = [KeyPathComparator(\SleepSession.start, order: .reverse)]
     @ViewState private var selection = Set<SleepSession.ID>()
     @ViewState private var hovered: Date?
     /// Where the pointer last was over the chart. Clicking clears `hovered`
@@ -332,10 +332,16 @@ struct SleepView: View {
 
     private var table: some View {
         Table(sessions.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
-            TableColumn("Slept", value: \.end) { session in
-                Text(sleptText(session))
+            TableColumn("Slept", value: \.start) { session in
+                DateTimeCell(date: session.start)
             }
-            .width(min: 170)
+            .width(min: 130)
+            TableColumn("Woke", value: \.end) { session in
+                // The time alone on the day it slept; with the date when it woke on a later day.
+                DateTimeCell(date: session.end, showsDate: !Calendar.current.isDate(session.end,
+                                                                                   inSameDayAs: session.start))
+            }
+            .width(min: 130)
             TableColumn("Duration", value: \.hours) { session in
                 Text(duration(session.hours)).monospacedDigit()
             }
@@ -363,14 +369,23 @@ struct SleepView: View {
         .onExitCommand { selection = [] }
     }
 
-    /// "Fri 23 Oct, 22:40 – 07:12".
+    /// "Fri 23 Oct, 13:33 – 14:08", or "Fri 23 Oct, 22:40 – Sat 24 Oct, 07:12"
+    /// when it woke on a later day.
     private func sleptText(_ session: SleepSession) -> String {
-        session.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-            + " – " + session.end.formatted(date: .omitted, time: .shortened)
+        let end = Calendar.current.isDate(session.end, inSameDayAs: session.start)
+            ? session.end.formatted(SleepDateFormat.time)
+            : session.end.formatted(SleepDateFormat.day) + ", " + session.end.formatted(SleepDateFormat.time)
+        return session.start.formatted(SleepDateFormat.day) + ", " + session.start.formatted(SleepDateFormat.time)
+            + " – " + end
     }
 
-    /// "8 h 13 min", or whole hours from 10 hours, where minutes add nothing.
+    /// "8 h 13 min"; whole hours from 10 hours, where minutes add nothing;
+    /// days and hours from a day, such as "2 d 3 h".
     private func duration(_ hours: Double) -> String {
+        if hours >= 24 {
+            let total = Int(hours.rounded())
+            return total % 24 == 0 ? "\(total / 24) d" : "\(total / 24) d \(total % 24) h"
+        }
         let minutes = hours >= 10 ? Int(hours.rounded()) * 60 : Int((hours * 60).rounded())
         return DurationFormat.readable(minutes)
     }
@@ -378,6 +393,29 @@ struct SleepView: View {
     /// "0.4%", with a decimal below 10% so small sleep losses don't all read "0%".
     private func percent(_ fraction: Double) -> String {
         String(format: fraction < 0.1 ? "%.1f%%" : "%.0f%%", fraction * 100)
+    }
+}
+
+private enum SleepDateFormat {
+    /// "Sat 24 Oct".
+    static let day = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+    /// "09:35", with a leading zero so times line up.
+    static let time = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .abbreviated)).minute(.twoDigits)
+}
+
+/// A date and time in a table cell, with the date in a fixed-width slot so
+/// the times line up down the column.
+private struct DateTimeCell: View {
+    let date: Date
+    var showsDate = true
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(showsDate ? date.formatted(SleepDateFormat.day) : "")
+                .frame(minWidth: 82, alignment: .leading)
+            Text(date.formatted(SleepDateFormat.time))
+        }
+        .monospacedDigit()
     }
 }
 
