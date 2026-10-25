@@ -35,11 +35,17 @@ final class HistoryController: ObservableObject {
     /// The reading taken as the Mac went to sleep.
     private var sleepReading: (date: Date, battery: MacBatterySnapshot)?
     private var sleepStarted: Date?
+    /// The last sleep, waiting for the gauge to refresh after waking.
+    private var pendingMeasurement: (sleep: (date: Date, battery: MacBatterySnapshot), wokeAt: Date,
+                                     task: Task<Void, Never>)?
     private var powerAggregator = PowerMinuteAggregator()
     /// Set while the system log is being read, so reads never overlap.
     private var readingSystemLog = false
     private var lastSystemLogCheck = Date.distantPast
     private var energyMeter = AppEnergyMeter()
+    /// The last hour's readings. Saved totals are by the hour, so an hour from
+    /// them could span nearly two; this keeps "the last hour" exact.
+    private var recentAppUsage: [(date: Date, usage: [String: AppUsage], onBattery: Bool)] = []
     private var lastEnergyReading = Date.distantPast
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
@@ -150,7 +156,22 @@ final class HistoryController: ObservableObject {
 
     private func willSleep() {
         sleepStarted = Date()
-        sleepReading = MacBatteryReader.read().map { (Date(), $0) }
+        let reading = MacBatteryReader.read()
+        // A sleep still waiting for the gauge to refresh after the last wake ends
+        // here: it takes this reading if the gauge has refreshed since that wake,
+        // and otherwise goes unmeasured. Left waiting, it would take a reading
+        // from after this sleep too and count this sleep's drain as its own.
+        if let pending = pendingMeasurement {
+            pending.task.cancel()
+            pendingMeasurement = nil
+            if let reading, (reading.gaugeUpdated ?? .distantPast) >= pending.wokeAt {
+                finishMeasurement(sleep: pending.sleep, wokeAt: pending.wokeAt, after: reading)
+            } else {
+                let slept = Self.describe(pending.sleep.date, pending.wokeAt)
+                Self.log.notice("Sleep \(slept, privacy: .public) not measured: slept again before the gauge refreshed")
+            }
+        }
+        sleepReading = reading.map { (Date(), $0) }
         if let minute = powerAggregator.flush() { savePowerMinute(minute) }
     }
 
@@ -167,32 +188,47 @@ final class HistoryController: ObservableObject {
         sleepReading = nil
         let wokeAt = Date()
         guard wokeAt.timeIntervalSince(sleep.date) >= SleepSession.minimumDuration else { return }
-        Task { [weak self] in
+        let task = Task { [weak self] in
             // The gauge refreshes about once a minute; allow for a slow first refresh.
             var after = MacBatteryReader.read()
             for _ in 0..<60 where after == nil || (after?.gaugeUpdated ?? wokeAt) < wokeAt {
                 try? await Task.sleep(for: .seconds(5))
+                // Cancelled when the Mac sleeps again first (see `willSleep`).
+                if Task.isCancelled { return }
                 after = MacBatteryReader.read()
             }
-            let slept = "\(sleep.date.formatted(date: .omitted, time: .standard))–"
-                + wokeAt.formatted(date: .omitted, time: .standard)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingMeasurement = nil
             guard let after, (after.gaugeUpdated ?? wokeAt) >= wokeAt else {
+                let slept = Self.describe(sleep.date, wokeAt)
                 Self.log.notice("Sleep \(slept, privacy: .public) not measured: no fresh reading after waking")
                 return
             }
-            guard let self, let store = self.store else { return }
-            guard var session = SleepSession(before: sleep.battery, after: after,
-                                             sleptAt: sleep.date, wokeAt: wokeAt) else {
-                let detail = "power \(sleep.battery.isExternalPowerConnected)/\(after.isExternalPowerConnected), "
-                    + "capacity \(sleep.battery.currentCapacity ?? -1)→\(after.currentCapacity ?? -1)"
-                Self.log.notice("Sleep \(slept, privacy: .public) not measured: \(detail, privacy: .public)")
-                return
-            }
-            session.briefWakes = SleepDrain.briefWakes(during: session, minutes: self.powerMinutes)
-            self.perform { try store.insert(session) }
-            self.reloadSleepSessions()
-            self.importWakeLog()
+            self.finishMeasurement(sleep: sleep, wokeAt: wokeAt, after: after)
         }
+        pendingMeasurement = (sleep, wokeAt, task)
+    }
+
+    /// Saves a sleep measured from the readings either side of it.
+    private func finishMeasurement(sleep: (date: Date, battery: MacBatterySnapshot), wokeAt: Date,
+                                   after: MacBatterySnapshot) {
+        guard let store else { return }
+        guard var session = SleepSession(before: sleep.battery, after: after,
+                                         sleptAt: sleep.date, wokeAt: wokeAt) else {
+            let detail = "power \(sleep.battery.isExternalPowerConnected)/\(after.isExternalPowerConnected), "
+                + "capacity \(sleep.battery.currentCapacity ?? -1)→\(after.currentCapacity ?? -1)"
+            let slept = Self.describe(sleep.date, wokeAt)
+            Self.log.notice("Sleep \(slept, privacy: .public) not measured: \(detail, privacy: .public)")
+            return
+        }
+        session.briefWakes = SleepDrain.briefWakes(during: session, minutes: powerMinutes)
+        perform { try store.insert(session) }
+        reloadSleepSessions()
+        importWakeLog()
+    }
+
+    private static func describe(_ slept: Date, _ woke: Date) -> String {
+        "\(slept.formatted(date: .omitted, time: .standard))–\(woke.formatted(date: .omitted, time: .standard))"
     }
 
     private func reloadSleepSessions() {
@@ -279,7 +315,7 @@ final class HistoryController: ObservableObject {
                                           to: last.date.addingTimeInterval(TimeInterval((last.seconds ?? 0) + 10)))
                 let annotated = text.map { SystemLog.annotate(during, with: SystemLog.parse($0)) } ?? []
                 await MainActor.run { [weak self] in
-                    self?.perform { try store.annotate(annotated, loggedSessions: [session.id]) }
+                    self?.perform { try store.annotate(annotated, loggedSessions: [session.id], failed: text == nil) }
                 }
             }
             await MainActor.run { [weak self] in
@@ -329,11 +365,26 @@ final class HistoryController: ObservableObject {
     private func recordAppEnergy() {
         let usage = energyMeter.measure().filter { $0.value.joules >= 0.01 || $0.value.cpuSeconds >= 0.01 }
         let onBattery = !(monitor?.battery?.isExternalPowerConnected ?? true)
-        perform { try store?.addAppUsage(usage, at: Date(), onBattery: onBattery) }
+        let now = Date()
+        perform { try store?.addAppUsage(usage, at: now, onBattery: onBattery) }
+        recentAppUsage.append((now, usage, onBattery))
+        recentAppUsage.removeAll { now.timeIntervalSince($0.date) > 3600 }
     }
 
     /// Each app's energy since `date`, most first, and when recording began.
+    /// Up to an hour comes from the readings in memory, exactly; longer from the
+    /// saved hourly totals, from the start of the hour containing `date`.
     func appEnergy(since date: Date, onBatteryOnly: Bool) -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
+        if Date().timeIntervalSince(date) <= 3600 {
+            var totals: [String: AppUsage] = [:]
+            let readings = recentAppUsage.filter { $0.date > date && (!onBatteryOnly || $0.onBattery) }
+            for reading in readings {
+                for (app, usage) in reading.usage { totals[app, default: AppUsage()] = totals[app, default: AppUsage()] + usage }
+            }
+            // Each reading covers the minute before it.
+            let since = recentAppUsage.first.map { $0.date.addingTimeInterval(-60) }
+            return (totals.map { (app: $0.key, usage: $0.value) }, since)
+        }
         var result: (apps: [(app: String, usage: AppUsage)], since: Date?) = ([], nil)
         perform {
             let rows = try store?.appUsage(since: date) ?? []

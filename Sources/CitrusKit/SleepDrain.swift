@@ -19,10 +19,13 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
     /// Whether the system log was read for the sleep, adding apps and push
     /// notifications to its brief wakes (see `SystemLog`).
     public var appsLogged: Bool
+    /// Whether that read failed (or timed out), so the sleep's apps and push
+    /// notifications are unknown rather than none. Failed reads aren't retried.
+    public var appsReadFailed: Bool
 
     public init(id: Int64 = 0, start: Date, end: Date, startCapacity: Int, endCapacity: Int,
                 fullChargeCapacity: Int, briefWakes: Int? = nil, wakesLogged: Bool = false,
-                appsLogged: Bool = false) {
+                appsLogged: Bool = false, appsReadFailed: Bool = false) {
         self.id = id
         self.start = start
         self.end = end
@@ -32,6 +35,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
         self.briefWakes = briefWakes
         self.wakesLogged = wakesLogged
         self.appsLogged = appsLogged
+        self.appsReadFailed = appsReadFailed
     }
 
     /// `DateInterval` traps when the end is before the start, so a damaged

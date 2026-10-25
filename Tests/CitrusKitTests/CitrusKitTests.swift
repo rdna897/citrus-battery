@@ -471,6 +471,26 @@ struct FakeSMC: SMCReading {
         #expect(backwards.interval.duration == 0)
     }
 
+    @Test func failedSystemLogReadsAreToldApart() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let store = try HistoryStore(url: nil)
+        for offset in [0.0, 86_400] {
+            try store.insert(SleepSession(start: night + offset, end: night + offset + 3600, startCapacity: 4000,
+                                          endCapacity: 3990, fullChargeCapacity: 4500, wakesLogged: true))
+        }
+        let ids = try store.sleepSessions().map(\.id)
+        try store.annotate([], loggedSessions: [ids[0]], failed: true)
+        try store.annotate([], loggedSessions: [ids[1]])
+        let sessions = try store.sleepSessions()
+        // Both were tried, so neither is read again; only one is unknown rather than empty.
+        #expect(sessions.allSatisfy { $0.appsLogged })
+        #expect(sessions.map(\.appsReadFailed) == [true, false])
+        // And a backup keeps the difference.
+        let restored = try HistoryStore(url: nil)
+        _ = try restored.importBackup(try store.exportBackup())
+        #expect(try restored.sleepSessions().map(\.appsReadFailed) == [true, false])
+    }
+
     @Test func wakesGainDetailsWithoutLosingThem() throws {
         let night = Date(timeIntervalSince1970: 1_792_000_000)
         let store = try HistoryStore(url: nil)

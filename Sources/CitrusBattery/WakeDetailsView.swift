@@ -43,8 +43,7 @@ struct WakeDetailsView: View {
                         + "presence take part in nearly every wake, so they aren't listed.")
                 RankedList(title: "Apps Using iCloud or Downloads", items: merged(breakdown.apps.map {
                     (name: AppNames.name(for: $0.name), count: $0.count)
-                }), empty: sessions.contains(where: \.appsLogged) ? "None during these wakes."
-                    : "Not available for these sleeps.",
+                }), empty: appsEmptyText,
                     help: "Apps that iCloud or background downloads worked for during the wakes.")
             }
             .padding(20)
@@ -72,10 +71,22 @@ struct WakeDetailsView: View {
         wakes.contains { !Calendar.current.isDate($0.date, equalTo: Date(), toGranularity: .year) }
     }
 
+    /// Sleeps whose apps are known: the system log was read for them.
+    private var appsKnown: [SleepSession] { sessions.filter { $0.appsLogged && !$0.appsReadFailed } }
+
+    private var appsEmptyText: String {
+        if !appsKnown.isEmpty { return "None during these wakes." }
+        return sessions.contains(where: \.appsReadFailed) ? "Couldn't be read for these sleeps."
+            : "Not available for these sleeps."
+    }
+
     private var footnote: String {
         var note = "macOS doesn't say which app a push notification was for."
         if sessions.contains(where: { !$0.appsLogged }) {
             note += " Older sleeps don't have app names."
+        }
+        if !appsKnown.isEmpty, sessions.contains(where: \.appsReadFailed) {
+            note += " App names couldn't be read for some sleeps."
         }
         return note
     }

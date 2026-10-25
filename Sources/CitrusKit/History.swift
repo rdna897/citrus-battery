@@ -319,7 +319,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 5, session.fullChargeCapacity)
             bind(statement, 6, session.briefWakes)
             bind(statement, 7, session.wakesLogged ? 1 : 0)
-            bind(statement, 8, session.appsLogged ? 1 : 0)
+            bind(statement, 8, session.appsReadFailed ? Self.appsReadFailed : session.appsLogged ? 1 : 0)
             try step(statement)
         }
     }
@@ -359,8 +359,8 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     /// Saves what the system log added to saved wakes (see `SystemLog`) and marks
-    /// the sessions it was read for.
-    public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64]) throws {
+    /// the sessions it was read for, or, when the read `failed`, tried for.
+    public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64], failed: Bool = false) throws {
         try locked {
             try execute("BEGIN")
             do {
@@ -373,7 +373,7 @@ public final class HistoryStore: @unchecked Sendable {
                     bind(update, 3, wake.date.timeIntervalSince1970)
                     try step(update)
                 }
-                try mark(loggedSessions, column: "apps_logged")
+                try mark(loggedSessions, column: "apps_logged", value: failed ? Self.appsReadFailed : 1)
                 try execute("COMMIT")
             } catch {
                 try? execute("ROLLBACK")
@@ -391,12 +391,17 @@ public final class HistoryStore: @unchecked Sendable {
         text?.split(separator: "\n").map(String.init) ?? []
     }
 
-    private func mark(_ sessions: [Int64], column: String) throws {
-        let mark = try prepare("UPDATE sleep_sessions SET \(column) = 1 WHERE id = ?")
+    /// `apps_logged` is 0 before the system log is read for a session, 1 once
+    /// read, and this when the read failed.
+    private static let appsReadFailed = 2
+
+    private func mark(_ sessions: [Int64], column: String, value: Int = 1) throws {
+        let mark = try prepare("UPDATE sleep_sessions SET \(column) = ? WHERE id = ?")
         defer { sqlite3_finalize(mark) }
         for id in sessions {
             sqlite3_reset(mark)
-            sqlite3_bind_int64(mark, 1, id)
+            bind(mark, 1, value)
+            sqlite3_bind_int64(mark, 2, id)
             try step(mark)
         }
     }
@@ -457,7 +462,8 @@ public final class HistoryStore: @unchecked Sendable {
                     fullChargeCapacity: int(statement, 5) ?? 1,
                     briefWakes: int(statement, 6),
                     wakesLogged: int(statement, 7) == 1,
-                    appsLogged: int(statement, 8) == 1))
+                    appsLogged: (int(statement, 8) ?? 0) != 0,
+                    appsReadFailed: int(statement, 8) == Self.appsReadFailed))
             }
             return result
         }
@@ -684,6 +690,7 @@ public final class HistoryStore: @unchecked Sendable {
         var briefWakes: Int?
         var wakesLogged: Bool?
         var appsLogged: Bool?
+        var appsReadFailed: Bool?
 
         init(_ session: SleepSession) {
             start = session.start
@@ -694,6 +701,7 @@ public final class HistoryStore: @unchecked Sendable {
             briefWakes = session.briefWakes
             wakesLogged = session.wakesLogged
             appsLogged = session.appsLogged
+            appsReadFailed = session.appsReadFailed ? true : nil
         }
 
         /// Whether the session makes sense: it ends after it starts, and its
@@ -712,7 +720,8 @@ public final class HistoryStore: @unchecked Sendable {
         var session: SleepSession {
             SleepSession(start: start, end: end, startCapacity: startCapacity, endCapacity: endCapacity,
                          fullChargeCapacity: fullChargeCapacity, briefWakes: briefWakes,
-                         wakesLogged: wakesLogged ?? false, appsLogged: appsLogged ?? false)
+                         wakesLogged: wakesLogged ?? false, appsLogged: appsLogged ?? false,
+                         appsReadFailed: appsReadFailed ?? false)
         }
     }
 
