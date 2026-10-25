@@ -111,7 +111,10 @@ public enum AdvancedInfo {
 
     // MARK: Mac
 
-    public static func mac(info: MacInfo, marketingName: String?) -> [InfoNode] {
+    /// Everything about the Mac. Reading SSD health can take a while (an external
+    /// drive may be slow to answer), so the app builds this in the background and
+    /// passes in `displays`, read on the main thread, where NSScreen must be used.
+    public static func mac(info: MacInfo, marketingName: String?, displays: InfoNode? = nil) -> [InfoNode] {
         var sections = [macSection(info: info, marketingName: marketingName)]
         if let registry = MacBatteryReader.registryProperties() {
             sections.append(tree("Battery (AppleSmartBattery)", registry.filter { !ignoredKeys.contains($0.key) }))
@@ -120,7 +123,7 @@ public enum AdvancedInfo {
             sections.append(tree("Battery Pack (BatteryData)", pack))
         }
         sections.append(storageSection())
-        sections.append(displaySection())
+        sections.append(displays ?? displaySection())
         sections.append(usbSection())
         return sections
     }
@@ -249,7 +252,7 @@ public enum AdvancedInfo {
     }
 
     /// Connected displays via CoreGraphics; names from NSScreen.
-    static func displaySection() -> InfoNode {
+    public static func displaySection() -> InfoNode {
         var count: UInt32 = 0
         CGGetOnlineDisplayList(0, nil, &count)
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))

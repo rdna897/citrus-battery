@@ -95,11 +95,19 @@ struct AdvancedViewer: View {
         guard !loading else { return }
         loading = true
         if target == AdvancedTarget.mac {
-            // Fast, and uses NSScreen, so build on the main thread.
-            sections = AdvancedInfo.mac(info: monitor.macInfo, marketingName: monitor.marketingName)
-            // Open each drive inside Storage too.
-            expanded.formUnion(sections.first { $0.id == "Storage" }?.children?.map(\.id) ?? [])
-            loading = false
+            // Displays use NSScreen, so they're read here; the rest, including SSD
+            // health, which a slow drive can hold up, in the background.
+            let displays = AdvancedInfo.displaySection()
+            let info = monitor.macInfo, name = monitor.marketingName
+            Task.detached(priority: .userInitiated) {
+                let built = AdvancedInfo.mac(info: info, marketingName: name, displays: displays)
+                await MainActor.run {
+                    sections = built
+                    // Open each drive inside Storage too.
+                    expanded.formUnion(built.first { $0.id == "Storage" }?.children?.map(\.id) ?? [])
+                    loading = false
+                }
+            }
             return
         }
         let listing = iosDevices.device(udid: target).flatMap { device in
