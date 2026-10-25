@@ -10,6 +10,8 @@ enum PreferenceKey {
     static let updateInterval = "updateInterval"
     static let powerChartPeriod = "powerChartPeriod"
     static let sleepPeriod = "sleepPeriod"
+    static let appEnergyPeriod = "appEnergyPeriod"
+    static let appEnergyBatteryOnly = "appEnergyBatteryOnly"
     static let autosaveNewDevices = "autosaveNewDevices"
 
     static let showInMenuBar = "showInMenuBar"

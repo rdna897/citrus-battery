@@ -4,13 +4,18 @@ import SwiftUI
 
 struct MacDetailView: View {
     @EnvironmentObject private var history: HistoryController
+    @StateObject private var sleepBlockers = SleepBlockerMonitor()
 
     var body: some View {
         ScrollView {
             MacDetailContent(trend: history.thisMacSerial.flatMap { history.trends[$0] },
                              sleepSessions: history.sleepSessions,
-                             powerMinutes: history.powerMinutes, sleepPeriods: history.sleepPeriods)
+                             powerMinutes: history.powerMinutes, sleepPeriods: history.sleepPeriods,
+                             sleepBlockers: sleepBlockers.blockers)
         }
+        // Only checked while the page is open.
+        .onAppear { sleepBlockers.start() }
+        .onDisappear { sleepBlockers.stop() }
         .navigationTitle("This Mac")
         .toolbar { AdvancedViewerButton(target: AdvancedTarget.mac) }
     }
@@ -25,6 +30,8 @@ struct MacDetailContent: View {
     /// Saved power readings and sleeps for the power chart.
     var powerMinutes: [PowerMinute] = []
     var sleepPeriods: [DateInterval] = []
+    /// Apps preventing sleep right now.
+    var sleepBlockers: [SleepBlocker] = []
     @EnvironmentObject private var monitor: BatteryMonitor
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityUnit) private var capacityUnit = CapacityUnit.milliampHours
@@ -35,7 +42,11 @@ struct MacDetailContent: View {
             header
             if let battery = monitor.battery {
                 batterySection(battery)
+                if !sleepBlockers.isEmpty {
+                    PreventingSleepCard(blockers: sleepBlockers)
+                }
                 powerSection(battery)
+                AppEnergyCard()
                 if battery.isExternalPowerConnected, let adapter = battery.adapter {
                     ChargerCard(adapter: adapter, inputWatts: chargerInputWatts(battery),
                                 advice: ChargerCheck.advice(battery: battery, inputWatts: chargerInputWatts(battery),
@@ -375,8 +386,10 @@ struct SleepCard: View {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
                     if let last = sessions.first {
                         InfoRow("Last sleep", SleepDrain.summary(last))
+                        // The wake date too when it woke on a later day.
                         InfoRow("Slept", "\(last.start.formatted(date: .abbreviated, time: .shortened)) – "
-                            + last.end.formatted(date: .omitted, time: .shortened))
+                            + last.end.formatted(date: Calendar.current.isDate(last.end, inSameDayAs: last.start)
+                                ? .omitted : .abbreviated, time: .shortened))
                     }
                     if sessions.count > 1 {
                         let recent = Array(sessions.prefix(10))

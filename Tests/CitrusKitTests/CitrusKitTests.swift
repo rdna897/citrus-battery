@@ -1424,3 +1424,83 @@ struct FakeSMC: SMCReading {
         #expect(WakeBreakdown.wakes(wakes, during: []).isEmpty)
     }
 }
+
+@Suite struct AppEnergyTests {
+    @Test func creditsHelpersToTheirApp() {
+        #expect(AppEnergyMeter.appPath(containing:
+            "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/"
+            + "Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)")
+            == "/Applications/Google Chrome.app")
+        #expect(AppEnergyMeter.appPath(containing: "/usr/libexec/nsurlsessiond") == "/usr/libexec/nsurlsessiond")
+    }
+
+    @Test func measuresThisProcessBetweenReadings() {
+        var meter = AppEnergyMeter()
+        #expect(meter.measure().isEmpty)
+        // Some work, so this process has processor time to report.
+        var total = 0.0
+        for index in 0..<2_000_000 { total += sin(Double(index)) }
+        #expect(total.isFinite)
+        let usage = meter.measure()
+        #expect(usage.values.allSatisfy { $0.joules >= 0 && $0.cpuSeconds >= 0 })
+        #expect(usage.values.contains { $0.cpuSeconds > 0 })
+    }
+
+    @Test func storesHourlyTotals() throws {
+        let store = try HistoryStore(url: nil)
+        let hour = Date(timeIntervalSince1970: 1_792_000_800)
+        try store.addAppUsage(["/A.app": AppUsage(joules: 100, cpuSeconds: 2)], at: hour, onBattery: true)
+        try store.addAppUsage(["/A.app": AppUsage(joules: 50, cpuSeconds: 1),
+                               "/B.app": AppUsage(joules: 10, cpuSeconds: 0.5)], at: hour + 600, onBattery: false)
+        let usage = try store.appUsage(since: hour)
+        let a = try #require(usage.first { $0.app == "/A.app" })
+        #expect(a.total == AppUsage(joules: 150, cpuSeconds: 3))
+        #expect(a.onBattery.joules == 100)
+        // Recorded by the hour; this time is on the hour.
+        #expect(try store.appUsageStart() == hour)
+        // Hours beyond the power timeline's retention are dropped.
+        try store.addAppUsage(["/B.app": AppUsage(joules: 1)], at: hour + PowerTimeline.retention + 7200,
+                              onBattery: false)
+        #expect(try store.appUsage(since: .distantPast).first { $0.app == "/A.app" } == nil)
+    }
+}
+
+@Suite struct SleepBlockerTests {
+    static let now = Date(timeIntervalSince1970: 1_792_000_000)
+
+    static func assertion(_ type: String, pid: Int32, process: String, name: String, age: TimeInterval,
+                          behalf: Int32? = nil) -> [String: Any] {
+        var assertion: [String: Any] = ["AssertType": type, "AssertPID": NSNumber(value: pid),
+                                        "Process Name": process, "AssertName": name,
+                                        "AssertStartWhen": now.addingTimeInterval(-age)]
+        if let behalf { assertion["AssertionOnBehalfOfPID"] = NSNumber(value: behalf) }
+        return assertion
+    }
+
+    @Test func namesAppsPreventingSleep() {
+        let owners: [Int32: String] = [10: "/Applications/zoom.us.app", 11: "/Applications/Utilities/Terminal.app",
+                                       12: "/Applications/Music.app", 20: "/usr/sbin/coreaudiod",
+                                       30: "/System/Library/CoreServices/powerd.bundle/powerd"]
+        let blockers = SleepBlockers.blockers(from: [
+            Self.assertion("PreventUserIdleDisplaySleep", pid: 10, process: "zoom.us", name: "In a meeting", age: 600),
+            Self.assertion("PreventUserIdleSystemSleep", pid: 10, process: "zoom.us", name: "com.zoom.call", age: 300),
+            Self.assertion("PreventUserIdleSystemSleep", pid: 11, process: "caffeinate",
+                           name: "caffeinate command-line tool", age: 120),
+            Self.assertion("PreventUserIdleSystemSleep", pid: 20, process: "coreaudiod",
+                           name: "com.apple.audio.context.preventuseridlesleep", age: 90, behalf: 12),
+            // macOS's own, and passing ones, aren't listed.
+            Self.assertion("PreventUserIdleSystemSleep", pid: 30, process: "powerd",
+                           name: "Powerd - Prevent sleep while display is on", age: 3600),
+            Self.assertion("PreventUserIdleSystemSleep", pid: 11, process: "backupd", name: "Backup", age: 20),
+            Self.assertion("UserIsActive", pid: 10, process: "zoom.us", name: "active", age: 600),
+        ], now: Self.now) { owners[$0] ?? "?" }
+        #expect(blockers.map(\.owner) == ["/Applications/zoom.us.app", "/Applications/Utilities/Terminal.app",
+                                          "/Applications/Music.app"])
+        // Zoom keeps the Mac awake, not just the display, and says why in words.
+        #expect(blockers[0].keepsDisplayOn == false && blockers[0].reason == "In a meeting")
+        #expect(blockers[0].since == Self.now.addingTimeInterval(-600))
+        // Its description only repeats the tool's name.
+        #expect(blockers[1].process == "caffeinate" && blockers[1].reason == nil)
+        #expect(blockers[2].reason == "Playing audio" && blockers[2].process == nil)
+    }
+}

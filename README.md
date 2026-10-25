@@ -93,6 +93,13 @@ Click any screenshot to see it at full resolution.
   as bars over the last hour, 24 hours, 7 days or 30 days, like the charts in macOS's
   Battery settings. A strip shows when the Mac slept, and brief wakes during sleep show
   as small power bars. Hover for exact readings (macOS 14 or later).
+- Energy by app: which apps used the most energy over the last hour, 24 hours, 7 days
+  or 30 days, in total or on battery only, with helpers counted towards their app.
+  Citrus Battery reads every app's running total once a minute, which takes a few
+  milliseconds.
+- Preventing sleep: apps keeping the Mac awake or its display on, such as a video call,
+  audio playing or `caffeinate`, with how long they've done so, in the menu and on
+  the This Mac page.
 - Charger check: the charger's name and maker, the power it agreed with the Mac, the
   USB-C voltage and current options it offers, and how much it's supplying now. It says
   when the charger is what limits charging speed, or can't keep up and the battery
@@ -176,6 +183,8 @@ need coconutBattery Plus.
 | Sleep drain per sleep, with a warning when high | ✓ | — |
 | Sleep history with statistics for any date range | ✓ | — |
 | Why the Mac woke during sleep | ✓ | — |
+| Energy use by app, up to 30 days | ✓ | — |
+| Apps preventing sleep | ✓ | — |
 | Health forecast: loss per year and when health reaches 80% | ✓ | — |
 | iPhone/iPad over USB | ✓ | ✓ |
 | iPhone/iPad over Wi-Fi | ✓ | Paid |

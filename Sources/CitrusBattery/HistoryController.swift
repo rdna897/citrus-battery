@@ -39,6 +39,8 @@ final class HistoryController: ObservableObject {
     /// Set while the system log is being read, so reads never overlap.
     private var readingSystemLog = false
     private var lastSystemLogCheck = Date.distantPast
+    private var energyMeter = AppEnergyMeter()
+    private var lastEnergyReading = Date.distantPast
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -308,6 +310,10 @@ final class HistoryController: ObservableObject {
             lastSystemLogCheck = Date()
             importSystemLogIfDue()
         }
+        if Date().timeIntervalSince(lastEnergyReading) >= 60 {
+            lastEnergyReading = Date()
+            recordAppEnergy()
+        }
         guard let watts = power.systemWatts else { return }
         let battery = monitor?.battery
         let charge = battery?.powerSource?.chargePercent
@@ -316,6 +322,25 @@ final class HistoryController: ObservableObject {
                                             onAdapter: battery?.isExternalPowerConnected ?? true) {
             savePowerMinute(minute)
         }
+    }
+
+    /// Adds each app's energy since the last reading to its hourly total. Reading
+    /// every process takes a few milliseconds, once a minute.
+    private func recordAppEnergy() {
+        let usage = energyMeter.measure().filter { $0.value.joules >= 0.01 || $0.value.cpuSeconds >= 0.01 }
+        let onBattery = !(monitor?.battery?.isExternalPowerConnected ?? true)
+        perform { try store?.addAppUsage(usage, at: Date(), onBattery: onBattery) }
+    }
+
+    /// Each app's energy since `date`, most first, and when recording began.
+    func appEnergy(since date: Date, onBatteryOnly: Bool) -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
+        var result: (apps: [(app: String, usage: AppUsage)], since: Date?) = ([], nil)
+        perform {
+            let rows = try store?.appUsage(since: date) ?? []
+            result.apps = rows.map { (app: $0.app, usage: onBatteryOnly ? $0.onBattery : $0.total) }
+            result.since = try store?.appUsageStart()
+        }
+        return result
     }
 
     private func savePowerMinute(_ minute: PowerMinute) {

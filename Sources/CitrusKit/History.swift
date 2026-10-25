@@ -170,6 +170,14 @@ public final class HistoryStore: @unchecked Sendable {
                 start REAL PRIMARY KEY,
                 end REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS app_energy (
+                hour REAL NOT NULL,
+                app TEXT NOT NULL,
+                joules REAL NOT NULL,
+                battery_joules REAL NOT NULL,
+                cpu_seconds REAL NOT NULL,
+                PRIMARY KEY (hour, app)
+            );
             CREATE TABLE IF NOT EXISTS dark_wakes (
                 date REAL PRIMARY KEY,
                 reason TEXT NOT NULL,
@@ -488,6 +496,78 @@ public final class HistoryStore: @unchecked Sendable {
                     onAdapter: (int(statement, 4) ?? 0) != 0))
             }
             return result
+        }
+    }
+
+    // MARK: App energy
+
+    /// Adds usage to each app's total for the hour containing `date`, counting it
+    /// as battery energy when `onBattery`, and drops hours older than
+    /// `PowerTimeline.retention`.
+    public func addAppUsage(_ usage: [String: AppUsage], at date: Date, onBattery: Bool) throws {
+        guard !usage.isEmpty else { return }
+        let hour = (date.timeIntervalSince1970 / 3600).rounded(.down) * 3600
+        try locked {
+            try execute("BEGIN")
+            do {
+                let statement = try prepare("""
+                    INSERT INTO app_energy (hour, app, joules, battery_joules, cpu_seconds) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(hour, app) DO UPDATE SET
+                        joules = joules + excluded.joules,
+                        battery_joules = battery_joules + excluded.battery_joules,
+                        cpu_seconds = cpu_seconds + excluded.cpu_seconds
+                    """)
+                defer { sqlite3_finalize(statement) }
+                for (app, used) in usage {
+                    sqlite3_reset(statement)
+                    bind(statement, 1, hour)
+                    bind(statement, 2, app)
+                    bind(statement, 3, used.joules)
+                    bind(statement, 4, onBattery ? used.joules : 0)
+                    bind(statement, 5, used.cpuSeconds)
+                    try step(statement)
+                }
+                let prune = try prepare("DELETE FROM app_energy WHERE hour < ?")
+                defer { sqlite3_finalize(prune) }
+                bind(prune, 1, hour - PowerTimeline.retention)
+                try step(prune)
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
+        }
+    }
+
+    /// Each app's usage in the hours from the one containing `date`, in total and
+    /// on battery.
+    public func appUsage(since date: Date) throws -> [(app: String, total: AppUsage, onBattery: AppUsage)] {
+        try locked {
+            let statement = try prepare("""
+                SELECT app, SUM(joules), SUM(battery_joules), SUM(cpu_seconds) FROM app_energy
+                WHERE hour >= ? GROUP BY app
+                """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, (date.timeIntervalSince1970 / 3600).rounded(.down) * 3600)
+            var result: [(app: String, total: AppUsage, onBattery: AppUsage)] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let app = text(statement, 0) else { continue }
+                result.append((app, AppUsage(joules: sqlite3_column_double(statement, 1),
+                                             cpuSeconds: sqlite3_column_double(statement, 3)),
+                               AppUsage(joules: sqlite3_column_double(statement, 2))))
+            }
+            return result
+        }
+    }
+
+    /// When app usage was first recorded, if it has been.
+    public func appUsageStart() throws -> Date? {
+        try locked {
+            let statement = try prepare("SELECT MIN(hour) FROM app_energy")
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_type(statement, 0) != SQLITE_NULL
+            else { return nil }
+            return Date(timeIntervalSince1970: sqlite3_column_double(statement, 0))
         }
     }
 

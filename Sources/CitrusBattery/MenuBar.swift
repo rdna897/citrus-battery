@@ -237,6 +237,7 @@ struct MenuBarPanel: View {
     @AppStorage(PreferenceKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius
     @AppStorage(PreferenceKey.capacityStyle) private var capacityStyle = CapacityStyle.defaultStyle
     @StateObject private var energy = SignificantEnergyMonitor()
+    @StateObject private var sleepBlockers = SleepBlockerMonitor()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -270,6 +271,11 @@ struct MenuBarPanel: View {
                         MenuSectionHeader("Using Significant Energy")
                         ForEach(apps) { EnergyAppRow(app: $0) }
                     }
+                }
+                if !sleepBlockers.blockers.isEmpty {
+                    MenuSeparator()
+                    MenuSectionHeader("Preventing Sleep")
+                    ForEach(sleepBlockers.blockers) { SleepBlockerRow(blocker: $0) }
                 }
             } else {
                 Text(monitor.marketingName ?? "This Mac")
@@ -311,8 +317,14 @@ struct MenuBarPanel: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .frame(width: 300)
-        .onAppear { energy.start() }
-        .onDisappear { energy.stop() }
+        .onAppear {
+            energy.start()
+            sleepBlockers.start()
+        }
+        .onDisappear {
+            energy.stop()
+            sleepBlockers.stop()
+        }
     }
 
     /// The Mac's name, with what's powering it underneath.
@@ -557,6 +569,27 @@ private struct EnergyAppRow: View {
             Text(app.displayName ?? url.map { FileManager.default.displayName(atPath: $0.path) }
                 .map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 } ?? app.bundleIdentifier)
                 .lineLimit(1)
+        }
+        .menuRowPadding()
+    }
+}
+
+/// An app preventing sleep: its icon and name, with what it's doing underneath.
+private struct SleepBlockerRow: View {
+    let blocker: SleepBlocker
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: AppIdentity.icon(blocker.owner))
+                .resizable()
+                .frame(width: 18, height: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppIdentity.name(blocker.owner)).lineLimit(1)
+                Text(SleepBlockerText.detail(blocker))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .menuRowPadding()
     }
