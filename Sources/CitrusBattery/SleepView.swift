@@ -171,7 +171,7 @@ struct SleepView: View {
                 // One label per day, week or month, so a date never repeats.
                 AxisMarks(values: .stride(by: axisStep(span: last.timeIntervalSince(first)))) { _ in
                     AxisGridLine()
-                    AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                    AxisValueLabel(format: SleepDateFormat.axis(withYear: showsYear))
                 }
             }
             .chartYScale(domain: 0...max(points.map { $0.lossPerHour * 100 }.max() ?? 0, 1.5) * 1.15)
@@ -333,15 +333,15 @@ struct SleepView: View {
     private var table: some View {
         Table(sessions.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
             TableColumn("Slept", value: \.start) { session in
-                DateTimeCell(date: session.start)
+                DateTimeCell(date: session.start, withYear: showsYear)
             }
-            .width(min: 130)
+            .width(min: showsYear ? 140 : 130)
             TableColumn("Woke", value: \.end) { session in
                 // The time alone on the day it slept; with the date when it woke on a later day.
-                DateTimeCell(date: session.end, showsDate: !Calendar.current.isDate(session.end,
+                DateTimeCell(date: session.end, withYear: showsYear, showsDate: !Calendar.current.isDate(session.end,
                                                                                    inSameDayAs: session.start))
             }
-            .width(min: 130)
+            .width(min: showsYear ? 140 : 130)
             TableColumn("Duration", value: \.hours) { session in
                 Text(duration(session.hours)).monospacedDigit()
             }
@@ -369,13 +369,21 @@ struct SleepView: View {
         .onExitCommand { selection = [] }
     }
 
+    /// Dates show the year once any sleep in the period is from another year,
+    /// on every row so the columns stay aligned.
+    private var showsYear: Bool {
+        sessions.contains { !Calendar.current.isDate($0.start, equalTo: Date(), toGranularity: .year) }
+    }
+
     /// "Fri 23 Oct, 13:33 – 14:08", or "Fri 23 Oct, 22:40 – Sat 24 Oct, 07:12"
     /// when it woke on a later day.
     private func sleptText(_ session: SleepSession) -> String {
         let end = Calendar.current.isDate(session.end, inSameDayAs: session.start)
             ? session.end.formatted(SleepDateFormat.time)
-            : session.end.formatted(SleepDateFormat.day) + ", " + session.end.formatted(SleepDateFormat.time)
-        return session.start.formatted(SleepDateFormat.day) + ", " + session.start.formatted(SleepDateFormat.time)
+            : session.end.formatted(SleepDateFormat.day(withYear: showsYear)) + ", "
+                + session.end.formatted(SleepDateFormat.time)
+        return session.start.formatted(SleepDateFormat.day(withYear: showsYear)) + ", "
+            + session.start.formatted(SleepDateFormat.time)
             + " – " + end
     }
 
@@ -397,8 +405,18 @@ struct SleepView: View {
 }
 
 private enum SleepDateFormat {
-    /// "Sat 24 Oct".
-    static let day = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+    /// "Sat 24 Oct", or "24 Oct 2025" with the year, where the weekday matters less
+    /// and would make the column too wide.
+    static func day(withYear: Bool) -> Date.FormatStyle {
+        withYear ? .dateTime.day().month(.abbreviated).year()
+            : .dateTime.weekday(.abbreviated).day().month(.abbreviated)
+    }
+
+    /// "24 Oct", or "24 Oct 2026".
+    static func axis(withYear: Bool) -> Date.FormatStyle {
+        let day = Date.FormatStyle.dateTime.day().month(.abbreviated)
+        return withYear ? day.year() : day
+    }
     /// "09:35", with a leading zero so times line up.
     static let time = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .abbreviated)).minute(.twoDigits)
 }
@@ -407,12 +425,13 @@ private enum SleepDateFormat {
 /// the times line up down the column.
 private struct DateTimeCell: View {
     let date: Date
+    var withYear = false
     var showsDate = true
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(showsDate ? date.formatted(SleepDateFormat.day) : "")
-                .frame(minWidth: 82, alignment: .leading)
+            Text(showsDate ? date.formatted(SleepDateFormat.day(withYear: withYear)) : "")
+                .frame(minWidth: withYear ? 92 : 82, alignment: .leading)
             Text(date.formatted(SleepDateFormat.time))
         }
         .monospacedDigit()
