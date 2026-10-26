@@ -433,11 +433,20 @@ struct Card<Content: View>: View {
 
 struct AdviceBox: View {
     let advice: BatteryAdvice
+    /// Off where the page doesn't scroll: text that insists on its full wrapped
+    /// height makes the minimum height depend on the width, and a split view
+    /// measuring a narrow column then can't lay the window out at all.
+    var insistsOnHeight = true
 
     var body: some View {
         Label {
-            Text(advice.message)
-                .fixedSize(horizontal: false, vertical: true)
+            if insistsOnHeight {
+                Text(advice.message)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(advice.message)
+                    .lineLimit(3)
+            }
         } icon: {
             Image(systemName: advice.level == .caution ? "exclamationmark.triangle.fill" : "info.circle.fill")
                 .foregroundStyle(advice.level == .caution ? Color.orange : Color.secondary)

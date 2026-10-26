@@ -114,7 +114,10 @@ struct SleepView: View {
                 } ?? "—", detail: stats.briefWakesPerHour == nil ? "not counted for these sleeps" : "with the screen off")
             }
             if stats.highLossCount > 0 {
-                AdviceBox(advice: BatteryAdvice(level: .caution, message: highLossMessage(stats.highLossCount)))
+                // The page doesn't scroll, so the advice gives way rather than
+                // fixing its height (see AdviceBox).
+                AdviceBox(advice: BatteryAdvice(level: .caution, message: highLossMessage(stats.highLossCount)),
+                          insistsOnHeight: false)
             }
         }
     }
@@ -270,7 +273,7 @@ struct SleepView: View {
                 Text(noReasonsMessage(logged: logged.count, of: scope.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
             } else {
                 ReasonBar(breakdown: breakdown)
                     .frame(height: 8)
@@ -311,7 +314,7 @@ struct SleepView: View {
                     Text("For \(logged.count) of \(scope.count) sleeps: macOS's power log keeps about a week.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(3)
                 }
             }
         }
