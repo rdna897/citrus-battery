@@ -111,6 +111,14 @@ public final class HistoryStore: @unchecked Sendable {
     /// Recursive, so a transaction can call methods that take it too.
     private let lock = NSRecursiveLock()
     private var transactionDepth = 0
+    private let workQueue = DispatchQueue(label: "org.citrusbattery.history", qos: .utility)
+
+    /// Queues database work in submission order without waiting for its lock on
+    /// the caller's thread. The completion runs on the same background queue.
+    public func enqueue<T: Sendable>(_ work: @escaping @Sendable (HistoryStore) throws -> T,
+                                     completion: @escaping @Sendable (Result<T, Error>) -> Void) {
+        workQueue.async { completion(Result { try work(self) }) }
+    }
 
     /// `~/Library/Application Support/Citrus Battery/history.sqlite`.
     public static var defaultURL: URL {

@@ -59,7 +59,7 @@ final class HistoryController: ObservableObject {
             lastError = error.localizedDescription
         }
         // Sleeps and wakes saved before Macs were recorded are this Mac's.
-        if let serial = thisMacSerial { perform { try self.store?.claimSleepData(for: serial) } }
+        if let serial = thisMacSerial { perform { try $0.claimSleepData(for: serial) } }
         reload()
         observers.append(monitor.$battery
             .compactMap { $0 }
@@ -68,8 +68,6 @@ final class HistoryController: ObservableObject {
         observers.append(monitor.$power
             .sink { [weak self] power in self?.recordPower(power) })
         loadPowerTimeline()
-        fillBriefWakes()
-        importWakeLog()
         observers.append(iosDevices.$devices
             .sink { [weak self] devices in
                 for device in devices where device.state == .ready {
@@ -111,16 +109,20 @@ final class HistoryController: ObservableObject {
 
     /// Auto-Record: at most one attempt an hour per device, skipping same-day duplicates.
     private func considerAutoRecord(_ entry: HistoryEntry) {
-        guard let store else { return }
+        guard store != nil else { return }
         let serial = entry.deviceSerial
         if let last = lastAutoRecordAttempt[serial], Date().timeIntervalSince(last) < AutoRecordPolicy.minimumInterval {
             return
         }
         lastAutoRecordAttempt[serial] = Date()
 
-        let enabled = (try? store.autoRecord(deviceSerial: serial)) ?? nil ?? autoRecordNewDevices
-        guard enabled else { return }
-        save(entry, skippingDuplicates: true)
+        let defaultAutoRecord = autoRecordNewDevices
+        perform { store in
+            let enabled = try store.autoRecord(deviceSerial: serial) ?? defaultAutoRecord
+            guard enabled,
+                  !AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: serial)) else { return }
+            try store.insert(entry)
+        } then: { self.reload() }
     }
 
     /// Saves the selected device's current reading now (the "Save Now" button), even
@@ -143,16 +145,16 @@ final class HistoryController: ObservableObject {
     }
 
     private func save(_ entry: HistoryEntry, skippingDuplicates: Bool) {
-        guard let store else { return }
-        perform {
+        perform { store in
             if skippingDuplicates,
                AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: entry.deviceSerial)) {
                 return
             }
             try store.insert(entry)
+        } then: {
+            if self.selectedDeviceSerial == nil { self.selectedDeviceSerial = entry.deviceSerial }
+            self.reload()
         }
-        if selectedDeviceSerial == nil { selectedDeviceSerial = entry.deviceSerial }
-        reload()
     }
 
     // MARK: Sleep
@@ -183,7 +185,7 @@ final class HistoryController: ObservableObject {
     private func didWake() {
         if let start = sleepStarted, Date().timeIntervalSince(start) >= 60 {
             let period = DateInterval(start: start, end: Date())
-            perform { try store?.insertSleepPeriod(period) }
+            perform { try $0.insertSleepPeriod(period) }
             sleepPeriods.append(period)
         }
         sleepStarted = nil
@@ -215,7 +217,7 @@ final class HistoryController: ObservableObject {
     /// Saves a sleep measured from the readings either side of it.
     private func finishMeasurement(sleep: (date: Date, battery: MacBatterySnapshot), wokeAt: Date,
                                    after: MacBatterySnapshot) {
-        guard let store else { return }
+        guard store != nil else { return }
         guard var session = SleepSession(before: sleep.battery, after: after,
                                          sleptAt: sleep.date, wokeAt: wokeAt) else {
             let detail = "power \(sleep.battery.isExternalPowerConnected)/\(after.isExternalPowerConnected), "
@@ -226,28 +228,32 @@ final class HistoryController: ObservableObject {
         }
         session.briefWakes = SleepDrain.briefWakes(during: session, minutes: powerMinutes)
         session.mac = thisMacSerial
-        perform { try store.insert(session) }
-        reloadSleepSessions()
-        importWakeLog()
+        let measured = session
+        perform { try $0.insert(measured) } then: { _ in
+            self.reloadSleepSessions { self.importWakeLog() }
+        }
     }
 
     private static func describe(_ slept: Date, _ woke: Date) -> String {
         "\(slept.formatted(date: .omitted, time: .standard))–\(woke.formatted(date: .omitted, time: .standard))"
     }
 
-    private func reloadSleepSessions() {
-        perform {
+    private func reloadSleepSessions(then completion: @escaping @MainActor () -> Void = {}) {
+        let mac = thisMacSerial
+        perform { store in
             // Only this Mac's: a backup from another Mac may hold its sleeps too.
-            let wakes = try store?.darkWakes(mac: thisMacSerial) ?? []
-            darkWakes = wakes
-            // Where macOS's log covered a sleep, its count beats the estimate from
-            // power readings, which joins wakes in back-to-back minutes.
-            sleepSessions = try (store?.sleepSessions(mac: thisMacSerial) ?? []).map { session in
+            let wakes = try store.darkWakes(mac: mac)
+            let sessions = try store.sleepSessions(mac: mac).map { session in
                 guard session.wakesLogged else { return session }
                 var counted = session
                 counted.briefWakes = WakeBreakdown.wakes(wakes, during: [session]).count
                 return counted
             }
+            return (sessions, wakes)
+        } then: { sessions, wakes in
+            self.sleepSessions = sessions
+            self.darkWakes = wakes
+            completion()
         }
     }
 
@@ -263,7 +269,7 @@ final class HistoryController: ObservableObject {
             let wakes = WakeBreakdown.wakes(darkWakes, during: [session])
             return !wakes.isEmpty && wakes.allSatisfy { $0.seconds == nil }
         }
-        guard !pending.isEmpty, let store else {
+        guard !pending.isEmpty, store != nil else {
             importSystemLogIfDue()
             return
         }
@@ -283,9 +289,9 @@ final class HistoryController: ObservableObject {
                     wake.mac = mac
                     return wake
                 }
-                self.perform { try store.insert(tagged, loggedSessions: covered.map(\.id)) }
-                self.reloadSleepSessions()
-                self.importSystemLogIfDue()
+                self.perform { try $0.insert(tagged, loggedSessions: covered.map(\.id)) } then: {
+                    self.reloadSleepSessions { self.importSystemLogIfDue() }
+                }
             }
         }
     }
@@ -302,7 +308,7 @@ final class HistoryController: ObservableObject {
     /// at background priority. On battery it waits for the charger, unless a
     /// sleep would otherwise soon fall out of the log.
     private func importSystemLogIfDue() {
-        guard !readingSystemLog, let store else { return }
+        guard !readingSystemLog, store != nil else { return }
         let now = Date()
         let pending = sleepSessions.filter { session in
             session.wakesLogged && !session.appsLogged
@@ -326,12 +332,11 @@ final class HistoryController: ObservableObject {
                                           to: last.date.addingTimeInterval((TimeInterval(last.seconds ?? 0) + 10)))
                 let annotated = text.map { SystemLog.annotate(during, with: SystemLog.parse($0)) } ?? []
                 await MainActor.run { [weak self] in
-                    self?.perform { try store.annotate(annotated, loggedSessions: [session.id], failed: text == nil) }
+                    self?.perform { try $0.annotate(annotated, loggedSessions: [session.id], failed: text == nil) }
                 }
             }
             await MainActor.run { [weak self] in
-                self?.readingSystemLog = false
-                self?.reloadSleepSessions()
+                self?.reloadSleepSessions { self?.readingSystemLog = false }
             }
         }
     }
@@ -342,7 +347,7 @@ final class HistoryController: ObservableObject {
         var filled = false
         for session in sleepSessions where session.briefWakes == nil {
             guard let count = SleepDrain.briefWakes(during: session, minutes: powerMinutes) else { continue }
-            perform { try store?.setBriefWakes(count, forSleepSession: session.id) }
+            perform { try $0.setBriefWakes(count, forSleepSession: session.id) }
             filled = true
         }
         if filled { reloadSleepSessions() }
@@ -382,7 +387,7 @@ final class HistoryController: ObservableObject {
         let onBattery = onBatteryNow && wasOnBatteryAtLastReading
         wasOnBatteryAtLastReading = onBatteryNow
         let now = Date()
-        perform { try store?.addAppUsage(usage, at: now, onBattery: onBattery) }
+        perform { try $0.addAppUsage(usage, at: now, onBattery: onBattery) }
         recentAppUsage.append((now, usage, onBattery))
         recentAppUsage.removeAll { now.timeIntervalSince($0.date) > 3600 }
     }
@@ -390,7 +395,7 @@ final class HistoryController: ObservableObject {
     /// Each app's energy over the period, most first, and when recording began.
     /// Up to an hour comes from the readings in memory, exactly; longer from the
     /// saved hourly totals, from the start of the hour containing `date`.
-    func appEnergy(period: AppEnergyPeriod, onBatteryOnly: Bool) -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
+    func appEnergy(period: AppEnergyPeriod, onBatteryOnly: Bool) async -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
         let date = Date().addingTimeInterval(-period.duration)
         if period.usesRecentReadings {
             var totals: [String: AppUsage] = [:]
@@ -402,17 +407,15 @@ final class HistoryController: ObservableObject {
             let since = recentAppUsage.first.map { $0.date.addingTimeInterval(-60) }
             return (totals.map { (app: $0.key, usage: $0.value) }, since)
         }
-        var result: (apps: [(app: String, usage: AppUsage)], since: Date?) = ([], nil)
-        perform {
-            let rows = try store?.appUsage(since: date) ?? []
-            result.apps = rows.map { (app: $0.app, usage: onBatteryOnly ? $0.onBattery : $0.total) }
-            result.since = try store?.appUsageStart()
-        }
-        return result
+        return await read { store in
+            let rows = try store.appUsage(since: date)
+            let apps = rows.map { (app: $0.app, usage: onBatteryOnly ? $0.onBattery : $0.total) }
+            return (apps: apps, since: try store.appUsageStart())
+        } ?? (apps: [], since: nil)
     }
 
     private func savePowerMinute(_ minute: PowerMinute) {
-        perform { try store?.insert(minute) }
+        perform { try $0.insert(minute) }
         powerMinutes.append(minute)
         let cutoff = Date().addingTimeInterval(-PowerTimeline.retention)
         if let first = powerMinutes.first, first.start < cutoff {
@@ -423,65 +426,78 @@ final class HistoryController: ObservableObject {
 
     private func loadPowerTimeline() {
         let since = Date().addingTimeInterval(-PowerTimeline.retention)
-        perform {
-            powerMinutes = try store?.powerMinutes(since: since) ?? []
-            sleepPeriods = try store?.sleepPeriods(since: since) ?? []
+        perform { store in
+            try (store.powerMinutes(since: since), store.sleepPeriods(since: since))
+        } then: { minutes, periods in
+            // Readings may have arrived while the initial load was queued.
+            let liveMinutes = self.powerMinutes.filter { $0.start >= (minutes.last?.start ?? .distantPast) }
+            let livePeriods = self.sleepPeriods.filter { $0.start > (periods.last?.start ?? .distantPast) }
+            self.powerMinutes = minutes
+            for minute in liveMinutes {
+                if self.powerMinutes.last?.start == minute.start {
+                    self.powerMinutes[self.powerMinutes.count - 1] = minute
+                } else {
+                    self.powerMinutes.append(minute)
+                }
+            }
+            self.sleepPeriods = periods + livePeriods
+            self.reloadSleepSessions {
+                self.fillBriefWakes()
+                self.importWakeLog()
+            }
         }
     }
 
     // MARK: Editing
 
     func delete(ids: Set<Int64>) {
-        perform { try store?.delete(ids: ids) }
-        reload()
+        perform { try $0.delete(ids: ids) } then: { self.reload() }
     }
 
     func deleteAllForSelectedDevice() {
         guard let serial = selectedDeviceSerial else { return }
-        perform { try store?.deleteAll(deviceSerial: serial) }
-        selectedDeviceSerial = nil
-        reload()
+        perform { try $0.deleteAll(deviceSerial: serial) } then: {
+            self.selectedDeviceSerial = nil
+            self.reload()
+        }
     }
 
     func setAutoRecord(_ enabled: Bool, for serial: String) {
-        perform { try store?.setAutoRecord(enabled, deviceSerial: serial) }
-        reload()
+        perform { try $0.setAutoRecord(enabled, deviceSerial: serial) } then: { self.reload() }
     }
 
     /// Auto-Record state for a device, falling back to the default for new devices.
     func autoRecord(for serial: String) -> Bool {
-        ((try? store?.autoRecord(deviceSerial: serial)) ?? nil) ?? autoRecordNewDevices
+        devices.first { $0.serial == serial }?.autoRecord ?? autoRecordNewDevices
     }
 
     // MARK: Backup
 
-    func exportBackup() -> Data? {
-        var data: Data?
-        perform { data = try store?.exportBackup() }
-        return data
+    func exportBackup() async -> Data? {
+        await read { try $0.exportBackup() }
     }
 
-    /// Imports a backup in the background, all or nothing. Returns what was
-    /// added, or nil if it failed, with the reason in `lastError`.
-    func importBackup(_ data: Data) async -> HistoryStore.BackupImport? {
-        guard let store else { return nil }
+    /// File access and the whole import run on the database queue, so periodic
+    /// saves and UI actions wait there without taking the lock on the main thread.
+    func importBackup(from url: URL) async -> HistoryStore.BackupImport? {
         let mac = thisMacSerial
-        let result = await Task.detached(priority: .userInitiated) {
-            Result { try store.importBackup(data, mac: mac) }
-        }.value
+        let result = await read { store in
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            return try store.importBackup(Data(contentsOf: url), mac: mac)
+        }
         reload()
-        return finish(result)
+        return result
     }
 
-    /// Imports a `.ccba` backup in the background. Returns the number of
-    /// entries added, or nil if it failed, with the reason in `lastError`.
-    func importCoconutBatteryBackup(_ data: Data) async -> Int? {
-        guard let store else { return nil }
-        let result = await Task.detached(priority: .userInitiated) {
-            Result { try store.importEntries(try CoconutBatteryBackup.entries(from: data)) }
-        }.value
+    func importCoconutBatteryBackup(from url: URL) async -> Int? {
+        let result = await read { store in
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            return try store.importEntries(CoconutBatteryBackup.entries(from: Data(contentsOf: url)))
+        }
         reload()
-        return finish(result)
+        return result
     }
 
     private func finish<T>(_ result: Result<T, Error>) -> T? {
@@ -504,36 +520,52 @@ final class HistoryController: ObservableObject {
     // MARK: Loading
 
     func reload() {
-        guard let store else { return }
         reloadSleepSessions()
-        perform { devices = try store.devices(defaultAutoRecord: autoRecordNewDevices) }
-        perform {
+        let defaultAutoRecord = autoRecordNewDevices
+        perform { store in
+            let devices = try store.devices(defaultAutoRecord: defaultAutoRecord)
             var trends: [String: HealthTrend] = [:]
             for device in devices {
                 trends[device.serial] = HealthForecast.trend(entries: try store.entries(deviceSerial: device.serial))
             }
+            return (devices, trends)
+        } then: { devices, trends in
+            self.devices = devices
             self.trends = trends
-        }
-        if selectedDeviceSerial == nil || !devices.contains(where: { $0.serial == selectedDeviceSerial }) {
-            selectedDeviceSerial = devices.first(where: { $0.serial == thisMacSerial })?.serial ?? devices.first?.serial
-        } else {
-            reloadEntries()
+            if self.selectedDeviceSerial == nil || !devices.contains(where: { $0.serial == self.selectedDeviceSerial }) {
+                self.selectedDeviceSerial = devices.first(where: { $0.serial == self.thisMacSerial })?.serial ?? devices.first?.serial
+            } else {
+                self.reloadEntries()
+            }
         }
     }
 
     private func reloadEntries() {
-        guard let store, let serial = selectedDeviceSerial else {
+        guard let serial = selectedDeviceSerial else {
             entries = []
             return
         }
-        perform { entries = try store.entries(deviceSerial: serial) }
+        perform { try $0.entries(deviceSerial: serial) } then: { entries in
+            guard self.selectedDeviceSerial == serial else { return }
+            self.entries = entries
+        }
     }
 
-    private func perform(_ body: () throws -> Void) {
-        do {
-            try body()
-        } catch {
-            lastError = error.localizedDescription
+    private func perform<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T,
+                                     then completion: @escaping @MainActor (T) -> Void = { _ in }) {
+        store?.enqueue(body) { [weak self] result in
+            Task { @MainActor in
+                guard let self, let value = self.finish(result) else { return }
+                completion(value)
+            }
         }
+    }
+
+    private func read<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T) async -> T? {
+        guard let store else { return nil }
+        let result = await withCheckedContinuation { continuation in
+            store.enqueue(body) { continuation.resume(returning: $0) }
+        }
+        return finish(result)
     }
 }

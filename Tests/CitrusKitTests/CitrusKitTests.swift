@@ -1948,3 +1948,48 @@ struct FakeSMC: SMCReading {
         #expect(Set(try store.entries().map(\.deviceSerial)) == ["before", "after"])
     }
 }
+
+@Suite struct HistoryQueueTests {
+    @Test @MainActor func savesQueueBehindAnImportWithoutWaitingOnTheMainThread() async throws {
+        let store = try HistoryStore(url: nil)
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let source = try HistoryStore(url: nil)
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        try source.insert(HistoryEntry(date: date, deviceType: .mac, deviceSerial: "M",
+                                       deviceName: "Mac", deviceModel: "Mac"))
+        let backup = try source.exportBackup()
+        store.enqueue({ store in
+            try store.transaction {
+                entered.signal()
+                release.wait()
+                return try store.importBackup(backup)
+            }
+        }, completion: { result in
+            if case .failure = result { Issue.record("Import failed") }
+        })
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                entered.wait()
+                continuation.resume()
+            }
+        }
+        // Release even if a regression makes a submission wait for the store.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5) { release.signal() }
+        let started = Date()
+        store.enqueue({ store in
+            try store.addAppUsage(["Photos": AppUsage(joules: 60)], at: date, onBattery: true)
+        }, completion: { result in
+            if case .failure = result { Issue.record("Save failed") }
+        })
+        let result = await withCheckedContinuation { continuation in
+            store.enqueue({ store in
+                try (store.entries().count, store.appUsage(since: date).first?.total.joules)
+            }, completion: { continuation.resume(returning: $0) })
+            #expect(Date().timeIntervalSince(started) < 1)
+            release.signal()
+        }
+        let (count, joules) = try result.get()
+        #expect(count == 1 && joules == 60)
+    }
+}

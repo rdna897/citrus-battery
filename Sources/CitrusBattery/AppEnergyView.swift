@@ -88,9 +88,14 @@ struct AppEnergyCard: View {
     }
 
     private func load() {
-        let result = history.appEnergy(period: period, onBatteryOnly: batteryOnly)
-        apps = result.apps
-        since = result.since
+        let selected = period
+        let onBatteryOnly = batteryOnly
+        Task {
+            let result = await history.appEnergy(period: selected, onBatteryOnly: onBatteryOnly)
+            guard period == selected, batteryOnly == onBatteryOnly else { return }
+            apps = result.apps
+            since = result.since
+        }
     }
 
     /// Intel Macs don't measure energy per process, so rank by processor time there.

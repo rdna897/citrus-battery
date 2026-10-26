@@ -63,17 +63,13 @@ struct HistoryView: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
             case let .success(url):
-                let accessing = url.startAccessingSecurityScopedResource()
-                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                if let data = try? Data(contentsOf: url) {
-                    Task {
-                        guard let added = await history.importBackup(data) else { return }
-                        var parts = ["\(added.entries) entr\(added.entries == 1 ? "y" : "ies")"]
-                        if added.sleepSessions > 0 {
-                            parts.append("\(added.sleepSessions) sleep\(added.sleepSessions == 1 ? "" : "s")")
-                        }
-                        importMessage = "Imported \(parts.joined(separator: " and "))."
+                Task {
+                    guard let added = await history.importBackup(from: url) else { return }
+                    var parts = ["\(added.entries) entr\(added.entries == 1 ? "y" : "ies")"]
+                    if added.sleepSessions > 0 {
+                        parts.append("\(added.sleepSessions) sleep\(added.sleepSessions == 1 ? "" : "s")")
                     }
+                    importMessage = "Imported \(parts.joined(separator: " and "))."
                 }
             case let .failure(error):
                 history.reportError(error.localizedDescription)
@@ -83,11 +79,8 @@ struct HistoryView: View {
                       allowedContentTypes: [UTType(filenameExtension: "ccba") ?? .data]) { result in
             switch result {
             case let .success(url):
-                let accessing = url.startAccessingSecurityScopedResource()
-                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                guard let data = try? Data(contentsOf: url) else { return }
                 Task {
-                    guard let added = await history.importCoconutBatteryBackup(data) else { return }
+                    guard let added = await history.importCoconutBatteryBackup(from: url) else { return }
                     importMessage = "Imported \(added) entr\(added == 1 ? "y" : "ies") from coconutBattery."
                 }
             case let .failure(error):
@@ -305,9 +298,11 @@ struct HistoryView: View {
 
             Menu {
                 Button("Create Backup…") {
-                    guard let data = history.exportBackup() else { return }
-                    exportDocument = BackupDocument(data: data)
-                    exporting = true
+                    Task {
+                        guard let data = await history.exportBackup() else { return }
+                        exportDocument = BackupDocument(data: data)
+                        exporting = true
+                    }
                 }
                 Button("Import Backup…") { importing = true }
                 Button("Import coconutBattery Backup…") { importingCoconut = true }
