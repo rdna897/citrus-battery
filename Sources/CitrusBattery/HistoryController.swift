@@ -124,7 +124,7 @@ final class HistoryController: ObservableObject {
             let enabled = try store.autoRecord(deviceSerial: serial) ?? defaultAutoRecord
             guard enabled,
                   !AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: serial)) else { return }
-            try store.insert(entry)
+            try store.insertReading(entry)
         } then: { self.reload() }
     }
 
@@ -153,7 +153,7 @@ final class HistoryController: ObservableObject {
                AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: entry.deviceSerial)) {
                 return
             }
-            try store.insert(entry)
+            try store.insertReading(entry)
         } then: {
             if self.selectedDeviceSerial == nil { self.selectedDeviceSerial = entry.deviceSerial }
             self.reload()
@@ -551,9 +551,13 @@ final class HistoryController: ObservableObject {
     private func perform<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T,
                                      then completion: @escaping @MainActor (T) -> Void = { _ in }) {
         store?.enqueue(body) { [weak self] result in
-            Task { @MainActor in
-                guard let self, let value = self.finish(result) else { return }
-                completion(value)
+            // The main queue runs these strictly in the order the work finished,
+            // which separate tasks don't promise.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, let value = self.finish(result) else { return }
+                    completion(value)
+                }
             }
         }
     }

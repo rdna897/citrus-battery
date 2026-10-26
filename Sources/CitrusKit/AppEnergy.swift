@@ -109,14 +109,15 @@ public struct AppEnergyMeter {
     }
 
     private static func executablePath(_ pid: pid_t) -> String? {
-        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
-        return String(cString: buffer)
+        var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        return String(decoding: buffer.prefix(Int(length)), as: UTF8.self)
     }
 
     /// The process macOS holds responsible for another, as Activity Monitor
     /// groups them; a private but long-standing libsystem call.
-    nonisolated(unsafe) private static let responsiblePID: (@convention(c) (pid_t) -> pid_t)? = {
+    private static let responsiblePID: (@convention(c) (pid_t) -> pid_t)? = {
         dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
             .map { unsafeBitCast($0, to: (@convention(c) (pid_t) -> pid_t).self) }
     }()
@@ -146,7 +147,6 @@ public enum AppEnergyPeriod: String, CaseIterable, Identifiable {
     }
     public var usesRecentReadings: Bool { self == .hour }
 }
-
 
 /// Tracks every power reading between energy samples, including a change to
 /// the adapter and back that would be missed by comparing just the endpoints.

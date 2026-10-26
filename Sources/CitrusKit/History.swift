@@ -68,12 +68,14 @@ public enum HistoryError: Error, LocalizedError, Equatable {
     case database(String)
     case unreadableBackup
     case damagedBackup
+    case unusableReading
 
     public var errorDescription: String? {
         switch self {
         case let .database(message): "History database error: \(message)"
         case .unreadableBackup: "This file isn't a Citrus Battery history backup."
         case .damagedBackup: "This backup has damaged records, so nothing was imported."
+        case .unusableReading: "This reading couldn't be saved: the device reported no usable date or serial number."
         }
     }
 }
@@ -89,7 +91,8 @@ public enum AutoRecordPolicy {
     /// has the same cycle count and a full-charge capacity within ±5%.
     public static func isDuplicate(_ candidate: HistoryEntry, of existing: [HistoryEntry],
                                    calendar: Calendar = .current) -> Bool {
-        guard HistoryValidation.entry(candidate) else { return false }
+        // Compared as it would be saved (see `insertReading`).
+        guard let candidate = HistoryValidation.reading(candidate) else { return false }
         return existing.contains { entry in
             guard HistoryValidation.entry(entry) else { return false }
             guard calendar.isDate(entry.date, inSameDayAs: candidate.date),
@@ -263,9 +266,19 @@ public final class HistoryStore: @unchecked Sendable {
 
     // MARK: Entries
 
+    /// Saves a reading taken now (Auto-Record or Save Now), leaving out figures
+    /// outside the ranges a backup is held to rather than losing the reading.
+    @discardableResult
+    public func insertReading(_ entry: HistoryEntry) throws -> Int64 {
+        guard let reading = HistoryValidation.reading(entry) else { throw HistoryError.unusableReading }
+        return try insert(reading)
+    }
+
     @discardableResult
     public func insert(_ entry: HistoryEntry) throws -> Int64 {
-        guard HistoryValidation.entry(entry) else { throw HistoryError.damagedBackup }
+        // Imports check their entries first and report a damaged backup; this
+        // catches anything else.
+        guard HistoryValidation.entry(entry) else { throw HistoryError.unusableReading }
         return try locked {
             let statement = try prepare("""
                 INSERT INTO entries (date, device_type, device_serial, device_name, device_model, os_version,
@@ -404,9 +417,9 @@ public final class HistoryStore: @unchecked Sendable {
     /// the sessions it was read for, or, when the read `failed`, tried for.
     public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64], failed: Bool = false) throws {
         try transaction {
-            // A log read may have started before an import enriched these rows.
-            let saved = Set(try darkWakes().map(\.id))
-            try merge(wakes.filter { saved.contains($0.id) })
+            // A log read may have started before an import enriched these rows,
+            // so merge with them; a wake deleted meanwhile isn't brought back.
+            try merge(wakes, onlyExisting: true)
             try mark(loggedSessions, column: "apps_logged", value: failed ? Self.appsReadFailed : 1)
         }
     }
@@ -442,27 +455,35 @@ public final class HistoryStore: @unchecked Sendable {
     /// Saved brief wakes, oldest first.
     /// With `mac`, only that Mac's wakes and any not yet assigned to a Mac.
     public func darkWakes(mac: String? = nil) throws -> [DarkWake] {
+        try wakes(where: "?1 IS NULL OR mac = '' OR mac = ?1") { bind($0, 1, mac) }
+    }
+
+    private static let wakeColumns = "date, reason, detail, seconds, holders, apps, mac"
+
+    /// Saved wakes matching `condition`, oldest first, skipping invalid rows.
+    private func wakes(where condition: String, binding: (OpaquePointer?) -> Void) throws -> [DarkWake] {
         try locked {
-            let statement = try prepare("""
-                SELECT date, reason, detail, seconds, holders, apps, mac FROM dark_wakes
-                WHERE ?1 IS NULL OR mac = '' OR mac = ?1 ORDER BY date
-                """)
+            let statement = try prepare("SELECT \(Self.wakeColumns) FROM dark_wakes WHERE \(condition) ORDER BY date")
             defer { sqlite3_finalize(statement) }
-            bind(statement, 1, mac)
+            binding(statement)
             var result: [DarkWake] = []
             try forEachRow(statement) {
-                let wake = DarkWake(
-                    date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
-                    reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
-                    detail: text(statement, 2),
-                    seconds: int(statement, 3),
-                    holders: Self.list(text(statement, 4)),
-                    apps: Self.list(text(statement, 5)),
-                    mac: text(statement, 6).flatMap { $0.isEmpty ? nil : $0 })
+                let wake = readWake(statement)
                 if HistoryValidation.wake(wake) { result.append(wake) }
             }
             return result
         }
+    }
+
+    private func readWake(_ statement: OpaquePointer?) -> DarkWake {
+        DarkWake(
+            date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+            reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
+            detail: text(statement, 2),
+            seconds: int(statement, 3),
+            holders: Self.list(text(statement, 4)),
+            apps: Self.list(text(statement, 5)),
+            mac: text(statement, 6).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// Assigns sleeps and wakes saved before Macs were recorded to `mac`: until
@@ -470,7 +491,7 @@ public final class HistoryStore: @unchecked Sendable {
     public func claimSleepData(for mac: String) throws {
         guard !mac.isEmpty else { return }
         try transaction {
-            let unclaimed = try darkWakes().filter { $0.mac == nil }.map { wake in
+            let unclaimed = try wakes(where: "mac = ''") { _ in }.map { wake in
                 var wake = wake
                 wake.mac = mac
                 return wake
@@ -880,8 +901,27 @@ public final class HistoryStore: @unchecked Sendable {
     /// Adds imported wakes, merging each with a saved wake at the same time: the
     /// more specific reason (a push notification over plain Wi-Fi), the apps of
     /// both, and anything only one of them has.
-    private func merge(_ imported: [DarkWake]) throws {
-        var saved = Dictionary(try darkWakes().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    /// Each wake is looked up by its key rather than loading every saved wake,
+    /// which grows by hundreds a week.
+    private func merge(_ imported: [DarkWake], onlyExisting: Bool = false) throws {
+        // Earlier copies in the same call, so duplicates add up.
+        var merging: [DarkWake.ID: DarkWake] = [:]
+        let lookup = try prepare("SELECT \(Self.wakeColumns) FROM dark_wakes WHERE mac = ? AND date = ?")
+        defer { sqlite3_finalize(lookup) }
+        func saved(_ id: DarkWake.ID) throws -> DarkWake? {
+            if let wake = merging[id] { return wake }
+            sqlite3_reset(lookup)
+            bind(lookup, 1, id.mac)
+            bind(lookup, 2, id.date.timeIntervalSince1970)
+            switch sqlite3_step(lookup) {
+            case SQLITE_ROW:
+                // An invalid saved row is replaced rather than merged with.
+                let wake = readWake(lookup)
+                return HistoryValidation.wake(wake) ? wake : nil
+            case SQLITE_DONE: return nil
+            default: throw HistoryError.database(String(cString: sqlite3_errmsg(db)))
+            }
+        }
         let statement = try prepare("""
             INSERT OR REPLACE INTO dark_wakes (date, reason, detail, seconds, holders, apps, mac)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -889,7 +929,9 @@ public final class HistoryStore: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         for wake in imported {
             var merged = wake
-            if let current = saved[wake.id] {
+            let current = try saved(wake.id)
+            if onlyExisting, current == nil { continue }
+            if let current {
                 merged = current
                 if current.reason == .other || (current.reason == .wireless && wake.reason == .pushNotification) {
                     merged.reason = wake.reason
@@ -910,7 +952,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 6, Self.list(merged.apps))
             bind(statement, 7, merged.mac ?? "")
             try step(statement)
-            saved[merged.id] = merged
+            merging[merged.id] = merged
         }
     }
 

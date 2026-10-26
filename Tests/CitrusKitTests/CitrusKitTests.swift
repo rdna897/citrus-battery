@@ -1679,7 +1679,8 @@ struct FakeSMC: SMCReading {
         #expect(!AutoRecordPolicy.isDuplicate(entry, of: [entry]))
         #expect(throws: HistoryError.damagedBackup) { try store.importEntries([entry]) }
         entry.fullChargeCapacity = Int.max
-        #expect(throws: HistoryError.damagedBackup) { try store.insert(entry) }
+        // Saving one directly isn't importing a backup, so it says so differently.
+        #expect(throws: HistoryError.unusableReading) { try store.insert(entry) }
         entry.fullChargeCapacity = 4500
         entry.date = Date(timeIntervalSince1970: Double.greatestFiniteMagnitude)
         #expect(throws: HistoryError.damagedBackup) { try store.importEntries([entry]) }
@@ -2133,5 +2134,28 @@ struct FakeSMC: SMCReading {
                 #expect(try store.entries().isEmpty)
             }
         }
+    }
+}
+
+@Suite struct LiveReadingTests {
+    static func reading(design: Int?, full: Int? = 4000, serial: String = "C02X") -> HistoryEntry {
+        HistoryEntry(date: Date(timeIntervalSince1970: 1_792_000_000), deviceType: .iOS, deviceSerial: serial,
+                     deviceName: "iPhone", deviceModel: "iPhone18,2", cycleCount: 100, designCapacity: design,
+                     fullChargeCapacity: full)
+    }
+
+    @Test func outOfRangeFiguresAreLeftOutRatherThanLosingTheReading() throws {
+        let store = try HistoryStore(url: nil)
+        try store.insertReading(Self.reading(design: 0))
+        let saved = try #require(try store.entries().first)
+        #expect(saved.designCapacity == nil && saved.fullChargeCapacity == 4000 && saved.cycleCount == 100)
+        // Without a serial there's nothing to file it under; that's not a backup problem.
+        #expect(throws: HistoryError.unusableReading) { try store.insertReading(Self.reading(design: 4500, serial: "")) }
+    }
+
+    @Test func aTidiedReadingStillCountsAsADuplicate() throws {
+        let store = try HistoryStore(url: nil)
+        try store.insertReading(Self.reading(design: 0))
+        #expect(AutoRecordPolicy.isDuplicate(Self.reading(design: 0), of: try store.entries()))
     }
 }

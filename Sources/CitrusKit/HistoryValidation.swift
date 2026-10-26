@@ -18,6 +18,19 @@ enum HistoryValidation {
             && (1...1000).contains(entry.dataVersion)
     }
 
+    /// A live reading with any out-of-range figures left out, so a device that
+    /// reports, say, a design capacity of 0 still gets its reading saved; nil
+    /// when what identifies it (date, serial, data version) isn't usable.
+    static func reading(_ entry: HistoryEntry) -> HistoryEntry? {
+        var entry = entry
+        if let count = entry.cycleCount, !(0...maximumCount).contains(count) { entry.cycleCount = nil }
+        if let design = entry.designCapacity, !(1...maximumCapacity).contains(design) { entry.designCapacity = nil }
+        if let full = entry.fullChargeCapacity, !(0...maximumCapacity).contains(full) {
+            entry.fullChargeCapacity = nil
+        }
+        return Self.entry(entry) ? entry : nil
+    }
+
     static func session(_ session: SleepSession) -> Bool {
         date(session.start) && date(session.end) && session.end > session.start
             && session.end.timeIntervalSince(session.start) <= 366 * 86_400
