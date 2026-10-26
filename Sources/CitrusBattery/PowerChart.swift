@@ -411,8 +411,11 @@ final class HistoryChartCache {
                         wakes: PowerTimeline.briefWakes(minutes, sleeps: inDomain))
         // Every recorded minute in the domain makes a bar, so the bars' span holds
         // exactly the minutes they show.
-        let span = (bars.first?.start ?? .distantFuture)..<(bars.last?.end ?? .distantPast)
-        let recorded = span.isEmpty ? [] : minutes.filter { span.contains($0.start) }
+        var recorded: [PowerMinute] = []
+        if let first = bars.first, let last = bars.last {
+            let span = first.start..<last.end
+            recorded = minutes.filter { span.contains($0.start) }
+        }
         summary = (recorded.map(\.averageWatts).reduce(0, +) / Double(max(recorded.count, 1)),
                    recorded.map(\.peakWatts).max())
         self.key = key
