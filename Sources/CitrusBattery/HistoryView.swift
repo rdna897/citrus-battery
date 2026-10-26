@@ -39,6 +39,14 @@ struct HistoryView: View {
         }
         .navigationTitle("History")
         .toolbar { toolbar }
+        .onChange(of: history.selectedDeviceSerial) { _ in
+            selection.removeAll()
+            confirmingDelete = false
+            confirmingDeleteAll = false
+        }
+        .onChange(of: history.entriesLoaded) { loaded in
+            if !loaded { selection.removeAll() }
+        }
         .confirmationDialog(
             "Delete \(selection.count) entr\(selection.count == 1 ? "y" : "ies") from your history?",
             isPresented: $confirmingDelete
@@ -253,14 +261,18 @@ struct HistoryView: View {
         }
         .contextMenu(forSelectionType: HistoryEntry.ID.self) { ids in
             Button("Copy") { copy(ids) }
+                .disabled(!history.entriesLoaded || ids.isEmpty)
             Button("Delete…", role: .destructive) {
                 selection = ids
                 confirmingDelete = true
             }
+            .disabled(!history.entriesLoaded || ids.isEmpty)
         }
+        .disabled(!history.entriesLoaded)
     }
 
     private func copy(_ ids: Set<HistoryEntry.ID>) {
+        guard history.entriesLoaded else { return }
         let entries = sortedEntries.filter { ids.contains($0.id) }
         let rows: [String] = entries.map { entry in
             let columns: [String] = [entry.date.formatted(date: .numeric, time: .shortened),
@@ -293,7 +305,7 @@ struct HistoryView: View {
             } label: {
                 Label("Delete", systemImage: "minus")
             }
-            .disabled(selection.isEmpty)
+            .disabled(!history.entriesLoaded || selection.isEmpty)
             .help("Delete the selected entries")
 
             Menu {
@@ -308,7 +320,7 @@ struct HistoryView: View {
                 Button("Import coconutBattery Backup…") { importingCoconut = true }
                 Divider()
                 Button("Delete All History for This Device…", role: .destructive) { confirmingDeleteAll = true }
-                    .disabled(selectedDevice == nil)
+                    .disabled(!history.entriesLoaded || selectedDevice == nil)
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }

@@ -11,9 +11,16 @@ final class HistoryController: ObservableObject {
 
     @Published private(set) var devices: [HistoryDevice] = []
     @Published private(set) var entries: [HistoryEntry] = []
+    @Published private(set) var entriesLoaded = false
     @Published var selectedDeviceSerial: String? {
-        didSet { reloadEntries() }
+        didSet {
+            guard oldValue != selectedDeviceSerial else { return }
+            entries = []
+            reloadEntries()
+        }
     }
+    private var entriesLoadID = 0
+    @Published private var pendingAutoRecord: [String: (id: UUID, enabled: Bool)] = [:]
     @Published private(set) var lastError: String?
     /// Health trend per device serial.
     @Published private(set) var trends: [String: HealthTrend] = [:]
@@ -123,23 +130,26 @@ final class HistoryController: ObservableObject {
         perform { store in
             let enabled = try store.autoRecord(deviceSerial: serial) ?? defaultAutoRecord
             guard enabled,
-                  !AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: serial)) else { return }
+                  !AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: serial)) else { return false }
             try store.insertReading(entry)
-        } then: { self.reload() }
+            return true
+        } then: { saved in
+            if saved { self.reload() }
+        }
     }
 
-    /// Saves the selected device's current reading now (the "Save Now" button), even
-    /// if a similar one exists. Falls back to this Mac when the selected device isn't
-    /// connected.
+    /// Saves the selected device's current reading now (the "Save Now" button),
+    /// unless that exact reading was saved already. Falls back to this Mac when
+    /// the selected device isn't connected.
     func saveNow() {
         if let serial = selectedDeviceSerial,
            let device = iosDevices?.devices.first(where: { $0.snapshot?.serialNumber == serial || $0.udid == serial }),
            device.state == .ready, let snapshot = device.snapshot, let battery = snapshot.battery {
-            save(HistoryEntry(device: snapshot, battery: battery), skippingDuplicates: false)
+            save(HistoryEntry(device: snapshot, battery: battery))
             return
         }
         guard let battery = monitor?.battery else { return }
-        save(macEntry(battery), skippingDuplicates: false)
+        save(macEntry(battery))
     }
 
     private func macEntry(_ battery: MacBatterySnapshot) -> HistoryEntry {
@@ -147,14 +157,9 @@ final class HistoryController: ObservableObject {
         return HistoryEntry(mac: monitor?.macInfo ?? MacInfo.read(), name: name, battery: battery)
     }
 
-    private func save(_ entry: HistoryEntry, skippingDuplicates: Bool) {
-        perform { store in
-            if skippingDuplicates,
-               AutoRecordPolicy.isDuplicate(entry, of: try store.entries(deviceSerial: entry.deviceSerial)) {
-                return
-            }
-            try store.insertReading(entry)
-        } then: {
+    private func save(_ entry: HistoryEntry) {
+        perform { try $0.insertReadingIfChanged(entry) } then: { saved in
+            guard saved else { return }
             if self.selectedDeviceSerial == nil { self.selectedDeviceSerial = entry.deviceSerial }
             self.reload()
         }
@@ -246,9 +251,10 @@ final class HistoryController: ObservableObject {
         "\(slept.formatted(date: .omitted, time: .standard))–\(woke.formatted(date: .omitted, time: .standard))"
     }
 
-    private func reloadSleepSessions(then completion: @escaping @MainActor () -> Void = {}) {
+    private func reloadSleepSessions(finally cleanup: @escaping @MainActor () -> Void = {},
+                                     then completion: @escaping @MainActor () -> Void = {}) {
         let mac = thisMacSerial
-        perform { store in
+        perform({ store in
             // Only this Mac's: a backup from another Mac may hold its sleeps too.
             let wakes = try store.darkWakes(mac: mac)
             let sessions = try store.sleepSessions(mac: mac).map { session in
@@ -258,7 +264,7 @@ final class HistoryController: ObservableObject {
                 return counted
             }
             return (sessions, wakes)
-        } then: { sessions, wakes in
+        }, finally: cleanup) { sessions, wakes in
             self.sleepSessions = sessions
             self.darkWakes = wakes
             completion()
@@ -344,7 +350,7 @@ final class HistoryController: ObservableObject {
                 }
             }
             await MainActor.run { [weak self] in
-                self?.reloadSleepSessions { self?.readingSystemLog = false }
+                self?.reloadSleepSessions(finally: { self?.readingSystemLog = false })
             }
         }
     }
@@ -453,24 +459,33 @@ final class HistoryController: ObservableObject {
     // MARK: Editing
 
     func delete(ids: Set<Int64>) {
+        guard entriesLoaded, !ids.isEmpty, ids.isSubset(of: Set(entries.map(\.id))) else { return }
         perform { try $0.delete(ids: ids) } then: { self.reload() }
     }
 
     func deleteAllForSelectedDevice() {
-        guard let serial = selectedDeviceSerial else { return }
+        guard entriesLoaded, let serial = selectedDeviceSerial else { return }
         perform { try $0.deleteAll(deviceSerial: serial) } then: {
-            self.selectedDeviceSerial = nil
+            if self.selectedDeviceSerial == serial { self.selectedDeviceSerial = nil }
             self.reload()
         }
     }
 
     func setAutoRecord(_ enabled: Bool, for serial: String) {
-        perform { try $0.setAutoRecord(enabled, deviceSerial: serial) } then: { self.reload() }
+        let id = UUID()
+        pendingAutoRecord[serial] = (id, enabled)
+        perform({ try $0.setAutoRecord(enabled, deviceSerial: serial) }, finally: {
+            if self.pendingAutoRecord[serial]?.id == id { self.pendingAutoRecord[serial] = nil }
+        }) {
+            if let index = self.devices.firstIndex(where: { $0.serial == serial }) {
+                self.devices[index].autoRecord = enabled
+            }
+        }
     }
 
     /// Auto-Record state for a device, falling back to the default for new devices.
     func autoRecord(for serial: String) -> Bool {
-        devices.first { $0.serial == serial }?.autoRecord ?? autoRecordNewDevices
+        pendingAutoRecord[serial]?.enabled ?? devices.first { $0.serial == serial }?.autoRecord ?? autoRecordNewDevices
     }
 
     // MARK: Backup
@@ -543,24 +558,32 @@ final class HistoryController: ObservableObject {
     }
 
     private func reloadEntries() {
+        entriesLoadID += 1
+        let loadID = entriesLoadID
+        entriesLoaded = false
         guard let serial = selectedDeviceSerial else {
             entries = []
             return
         }
         perform { try $0.entries(deviceSerial: serial) } then: { entries in
-            guard self.selectedDeviceSerial == serial else { return }
+            guard self.selectedDeviceSerial == serial, self.entriesLoadID == loadID else { return }
             self.entries = entries
+            self.entriesLoaded = true
         }
     }
 
     private func perform<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T,
+                                     finally cleanup: @escaping @MainActor () -> Void = {},
                                      then completion: @escaping @MainActor (T) -> Void = { _ in }) {
-        store?.enqueue(body) { [weak self] result in
+        guard let store else { cleanup(); return }
+        store.enqueue(body) { [weak self] result in
             // The main queue runs these strictly in the order the work finished,
             // which separate tasks don't promise.
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self, let value = self.finish(result) else { return }
+                    guard let self else { return }
+                    defer { cleanup() }
+                    guard let value = self.finish(result) else { return }
                     completion(value)
                 }
             }

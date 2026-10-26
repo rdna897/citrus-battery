@@ -68,5 +68,6 @@ let package = Package(
             ] + (sdkPath.map { ["-Xclang-linker", "-isysroot", "-Xclang-linker", $0] } ?? []))]
         ),
         .testTarget(name: "CitrusKitTests", dependencies: ["CitrusKit"]),
+        .testTarget(name: "CitrusBatteryTests", dependencies: ["CitrusBattery"]),
     ]
 )

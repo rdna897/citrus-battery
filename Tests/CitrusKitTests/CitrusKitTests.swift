@@ -2302,3 +2302,22 @@ struct FakeSMC: SMCReading {
         }
     }
 }
+
+@Suite struct ManualReadingTests {
+    @Test func skipsOnlyAnIdenticalLatestReading() throws {
+        let store = try HistoryStore(url: nil)
+        var reading = LiveReadingTests.reading(design: 0)
+        #expect(try store.insertReadingIfChanged(reading))
+        #expect(try !store.insertReadingIfChanged(reading))
+        #expect(try store.entries().count == 1)
+        reading.fullChargeCapacity = 3999
+        #expect(try store.insertReadingIfChanged(reading))
+        #expect(try !store.insertReadingIfChanged(reading))
+        reading.date += 1
+        #expect(try store.insertReadingIfChanged(reading))
+        #expect(try !store.insertReadingIfChanged(reading))
+        #expect(try store.entries().count == 3)
+        reading.deviceSerial = "OTHER"
+        #expect(try store.insertReadingIfChanged(reading))
+    }
+}

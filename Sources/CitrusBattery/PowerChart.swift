@@ -388,7 +388,7 @@ final class HistoryChartCache {
     private struct Key: Equatable {
         var period: PowerPeriod
         var minuteCount: Int
-        var lastMinute: Date?
+        var lastMinute: PowerMinute?
         var sleepCount: Int
         var lastSleepEnd: Date?
         var minute: Int
@@ -400,7 +400,7 @@ final class HistoryChartCache {
     private(set) var summary: (average: Double, peak: Double?) = (0, nil)
 
     func data(period: PowerPeriod, minutes: [PowerMinute], sleeps: [DateInterval], now: Date) -> Data {
-        let key = Key(period: period, minuteCount: minutes.count, lastMinute: minutes.last?.start,
+        let key = Key(period: period, minuteCount: minutes.count, lastMinute: minutes.last,
                       sleepCount: sleeps.count, lastSleepEnd: sleeps.last?.end,
                       minute: Int(now.timeIntervalSince1970 / 60))
         if key == self.key, let cached { return cached }

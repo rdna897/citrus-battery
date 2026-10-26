@@ -319,18 +319,38 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
+    /// Saves a current reading unless it is identical to that device's latest
+    /// entry. Row IDs identify saved rows, not changes to the reading itself.
+    @discardableResult
+    public func insertReadingIfChanged(_ entry: HistoryEntry) throws -> Bool {
+        guard var reading = HistoryValidation.reading(entry) else { throw HistoryError.unusableReading }
+        return try locked {
+            if let latest = try readEntries(deviceSerial: reading.deviceSerial, latestOnly: true).first {
+                reading.id = latest.id
+                if reading == latest { return false }
+            }
+            try insert(reading)
+            return true
+        }
+    }
+
     /// Entries for one device, newest first; all devices when `deviceSerial` is nil.
     public func entries(deviceSerial: String? = nil) throws -> [HistoryEntry] {
+        try readEntries(deviceSerial: deviceSerial)
+    }
+
+    private func readEntries(deviceSerial: String?, latestOnly: Bool = false) throws -> [HistoryEntry] {
         try locked {
             let sql = "SELECT id, date, device_type, device_serial, device_name, device_model, os_version, "
                 + "battery_serial, cycle_count, design_capacity, full_charge_capacity, data_version, comment "
-                + "FROM entries" + (deviceSerial == nil ? "" : " WHERE device_serial = ?") + " ORDER BY date DESC"
+                + "FROM entries" + (deviceSerial == nil ? "" : " WHERE device_serial = ?")
+                + " ORDER BY date DESC, id DESC"
             let statement = try prepare(sql)
             defer { sqlite3_finalize(statement) }
             if let deviceSerial { bind(statement, 1, deviceSerial) }
 
             var result: [HistoryEntry] = []
-            try forEachRow(statement) {
+            while try nextRow(statement) {
                 let entry = HistoryEntry(
                     id: sqlite3_column_int64(statement, 0),
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
@@ -346,7 +366,10 @@ public final class HistoryStore: @unchecked Sendable {
                     dataVersion: int(statement, 11) ?? 1,
                     comment: text(statement, 12)
                 )
-                if let reading = HistoryValidation.reading(entry) { result.append(reading) }
+                if let reading = HistoryValidation.reading(entry) {
+                    result.append(reading)
+                    if latestOnly { break }
+                }
             }
             return result
         }
