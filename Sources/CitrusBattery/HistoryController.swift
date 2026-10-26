@@ -114,11 +114,18 @@ final class HistoryController: ObservableObject {
         observers.removeAll()
         pendingMeasurement?.task.cancel()
         pendingMeasurement = nil
+        // Back on the main thread through the run loop, not the main queue,
+        // which is busy if quitting began in a main-queue block (see AppDelegate).
+        let finish: @Sendable () -> Void = {
+            RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+                MainActor.assumeIsolated { completion() }
+            }
+        }
         guard let store else {
-            DispatchQueue.main.async { completion() }
+            finish()
             return
         }
-        store.drain { DispatchQueue.main.async { completion() } }
+        store.drain(completion: finish)
     }
 
     // MARK: Saving

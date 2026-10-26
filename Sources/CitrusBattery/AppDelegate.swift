@@ -100,8 +100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !waitingToTerminate else { return .terminateLater }
         waitingToTerminate = true
         history.prepareForTermination { [weak self] in self?.finishTermination(sender) }
-        // A slow import or an unavailable disk must not keep the app open.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.finishTermination(sender) }
+        // A slow import or an unavailable disk must not keep the app open. A run
+        // loop timer rather than the main queue: quitting from a main-queue block
+        // (as Sparkle and the launch test do) leaves that queue busy until the
+        // reply, while AppKit keeps the run loop going.
+        let timeout = Timer(timeInterval: 3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.finishTermination(sender) }
+        }
+        RunLoop.main.add(timeout, forMode: .common)
+        RunLoop.main.add(timeout, forMode: .modalPanel)
         return .terminateLater
     }
 
