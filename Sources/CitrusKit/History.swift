@@ -69,10 +69,12 @@ public enum HistoryError: Error, LocalizedError, Equatable {
     case unreadableBackup
     case damagedBackup
     case unusableReading
+    case newerSchema
 
     public var errorDescription: String? {
         switch self {
         case let .database(message): "History database error: \(message)"
+        case .newerSchema: "This history needs a newer version of Citrus Battery."
         case .unreadableBackup: "This file isn't a Citrus Battery history backup."
         case .damagedBackup: "This backup has damaged records, so nothing was imported."
         case .unusableReading: "This reading couldn't be saved: the device reported no usable date or serial number."
@@ -146,6 +148,13 @@ public final class HistoryStore: @unchecked Sendable {
             sqlite3_close(db)
             throw HistoryError.database(message)
         }
+        var ready = false
+        defer { if !ready { sqlite3_close(db) } }
+        do {
+            let version = try prepare("PRAGMA user_version")
+            defer { sqlite3_finalize(version) }
+            guard try nextRow(version), sqlite3_column_int(version, 0) <= 1 else { throw HistoryError.newerSchema }
+        }
         try execute("""
             PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS entries (
@@ -216,6 +225,13 @@ public final class HistoryStore: @unchecked Sendable {
         // Intel Macs don't measure energy per process, so on battery only
         // processor time can rank apps there.
         try addColumnIfMissing(table: "app_energy", column: "battery_cpu_seconds", type: "REAL NOT NULL DEFAULT 0")
+        // Released versions through 1.2.1 never used dark_wakes. Version 1 marks
+        // its per-Mac identity so future migrations can recognise this boundary.
+        try execute("""
+            CREATE INDEX IF NOT EXISTS dark_wakes_date ON dark_wakes (date);
+            PRAGMA user_version = 1;
+            """)
+        ready = true
     }
 
     /// A NULL key would let SQLite keep duplicate unknown-Mac wakes, so the

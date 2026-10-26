@@ -2185,3 +2185,43 @@ struct FakeSMC: SMCReading {
         #expect(!unplugged.notify && unplugged.armed)
     }
 }
+
+@Suite struct HistorySchemaTests {
+    @Test func recordsTheWakeSchemaAndIndexesDatesWithoutMakingThemUnique() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("schema-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try HistoryStore(url: url)
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        try store.insert([DarkWake(date: date, reason: .other, mac: "M1"),
+                          DarkWake(date: date, reason: .other, mac: "M2")], loggedSessions: [])
+        #expect(try store.darkWakes().count == 2)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        #expect(sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK)
+        #expect(sqlite3_step(statement) == SQLITE_ROW)
+        #expect(sqlite3_column_int(statement, 0) == 1)
+        sqlite3_finalize(statement)
+        #expect(sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN SELECT * FROM dark_wakes WHERE ?1 IS NULL OR mac = '' OR mac = ?1 ORDER BY date",
+                                 -1, &statement, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        var plan = ""
+        while sqlite3_step(statement) == SQLITE_ROW {
+            plan += String(cString: sqlite3_column_text(statement, 3))
+        }
+        #expect(plan.contains("dark_wakes_date"))
+        #expect(!plan.contains("TEMP B-TREE"))
+        #expect(try HistoryStore(url: url).darkWakes().count == 2)
+    }
+
+    @Test func leavesANewerSchemaVersionAlone() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("newer-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, "PRAGMA user_version = 2", nil, nil, nil) == SQLITE_OK)
+        #expect(throws: HistoryError.newerSchema) { try HistoryStore(url: url) }
+    }
+}
