@@ -238,21 +238,21 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
-    private func addColumnIfMissing(table: String, column: String, type: String) throws {
+    private func hasColumn(table: String, column: String) throws -> Bool {
         let statement = try prepare("SELECT 1 FROM pragma_table_info('\(table)') WHERE name = '\(column)'")
-        let exists = sqlite3_step(statement) == SQLITE_ROW
-        sqlite3_finalize(statement)
-        if !exists {
+        defer { sqlite3_finalize(statement) }
+        return try nextRow(statement)
+    }
+
+    private func addColumnIfMissing(table: String, column: String, type: String) throws {
+        if try !hasColumn(table: table, column: column) {
             try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(type)")
         }
     }
 
     /// Databases from earlier builds named the per-device column `smart_save`.
     private func renameLegacyColumn() throws {
-        let statement = try prepare("SELECT 1 FROM pragma_table_info('devices') WHERE name = 'smart_save'")
-        let hasLegacy = sqlite3_step(statement) == SQLITE_ROW
-        sqlite3_finalize(statement)
-        if hasLegacy {
+        if try hasColumn(table: "devices", column: "smart_save") {
             try execute("ALTER TABLE devices RENAME COLUMN smart_save TO auto_record")
         }
     }
@@ -630,7 +630,7 @@ public final class HistoryStore: @unchecked Sendable {
         try locked {
             let statement = try prepare("SELECT MIN(hour) FROM app_energy")
             defer { sqlite3_finalize(statement) }
-            guard sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_type(statement, 0) != SQLITE_NULL
+            guard try nextRow(statement), sqlite3_column_type(statement, 0) != SQLITE_NULL
             else { return nil }
             return Date(timeIntervalSince1970: sqlite3_column_double(statement, 0))
         }
@@ -707,7 +707,7 @@ public final class HistoryStore: @unchecked Sendable {
             let statement = try prepare("SELECT auto_record FROM devices WHERE serial = ?")
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, deviceSerial)
-            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            guard try nextRow(statement) else { return nil }
             return sqlite3_column_int(statement, 0) != 0
         }
     }
@@ -962,16 +962,19 @@ public final class HistoryStore: @unchecked Sendable {
         return statement
     }
 
-    /// Calls `row` for each row of a query, and throws if SQLite stops with an
-    /// error partway, rather than handing back the rows read so far as if complete.
-    private func forEachRow(_ statement: OpaquePointer?, _ row: () throws -> Void) throws {
-        while true {
-            switch sqlite3_step(statement) {
-            case SQLITE_ROW: try row()
-            case SQLITE_DONE: return
-            default: throw HistoryError.database(String(cString: sqlite3_errmsg(db)))
-            }
+    /// Only DONE means no data; a failed scalar read must not look like an
+    /// unset preference or an empty history.
+    private func nextRow(_ statement: OpaquePointer?) throws -> Bool {
+        switch sqlite3_step(statement) {
+        case SQLITE_ROW: return true
+        case SQLITE_DONE: return false
+        default: throw HistoryError.database(String(cString: sqlite3_errmsg(db)))
         }
+    }
+
+    /// Calls `row` for each row, throwing if SQLite stops with an error partway.
+    private func forEachRow(_ statement: OpaquePointer?, _ row: () throws -> Void) throws {
+        while try nextRow(statement) { try row() }
     }
 
     private func step(_ statement: OpaquePointer?) throws {

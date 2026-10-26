@@ -2054,3 +2054,29 @@ struct FakeSMC: SMCReading {
         #expect(try store.powerMinutes(since: date) == minutes)
     }
 }
+
+@Suite struct HistoryScalarReadTests {
+    @Test func emptyScalarReadsStillReturnNil() throws {
+        let store = try HistoryStore(url: nil)
+        #expect(try store.autoRecord(deviceSerial: "missing") == nil)
+        #expect(try store.appUsageStart() == nil)
+    }
+
+    @Test func errorsWhileSteppingScalarQueriesAreThrown() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scalar-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try HistoryStore(url: url)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        // These views prepare successfully, but evaluating either scalar fails.
+        #expect(sqlite3_exec(db, """
+            ALTER TABLE devices RENAME TO saved_devices;
+            CREATE VIEW devices AS SELECT 'M' AS serial, abs(-9223372036854775808) AS auto_record;
+            ALTER TABLE app_energy RENAME TO saved_app_energy;
+            CREATE VIEW app_energy AS SELECT abs(-9223372036854775808) AS hour;
+            """, nil, nil, nil) == SQLITE_OK)
+        #expect(throws: HistoryError.self) { try store.autoRecord(deviceSerial: "M") }
+        #expect(throws: HistoryError.self) { try store.appUsageStart() }
+    }
+}
