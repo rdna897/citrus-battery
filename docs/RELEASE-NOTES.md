@@ -1,4 +1,4 @@
-Citrus Battery 1.2.1 is a free, open source battery monitor for macOS, iPhone and iPad.
+Citrus Battery 1.3 is a free, open source battery monitor for macOS, iPhone and iPad.
 Please report problems through GitHub Issues.
 
 ## Download the application
@@ -7,8 +7,8 @@ Please report problems through GitHub Issues.
 
 | Your Mac | Application download |
 | --- | --- |
-| **Apple Silicon — M1 or later** | **[Download Citrus Battery for Apple Silicon](https://github.com/rdna897/citrus-battery/releases/download/v1.2.1/CitrusBattery-1.2.1-arm64-macOS13.0.zip)** (`arm64`) |
-| **Intel** | **[Download Citrus Battery for Intel](https://github.com/rdna897/citrus-battery/releases/download/v1.2.1/CitrusBattery-1.2.1-x86_64-macOS13.0.zip)** (`x86_64`) |
+| **Apple Silicon — M1 or later** | **[Download Citrus Battery for Apple Silicon](https://github.com/rdna897/citrus-battery/releases/download/v1.3/CitrusBattery-1.3-arm64-macOS13.0.zip)** (`arm64`) |
+| **Intel** | **[Download Citrus Battery for Intel](https://github.com/rdna897/citrus-battery/releases/download/v1.3/CitrusBattery-1.3-x86_64-macOS13.0.zip)** (`x86_64`) |
 
 To check which Mac you have, open **Apple menu → About This Mac**. An Apple chip
 means Apple Silicon; an Intel processor means Intel.
@@ -29,6 +29,48 @@ See [Apple's first-launch guidance](https://support.apple.com/en-gb/102445).
 **Using 1.1 or later?** Citrus Battery offers this update itself. **Upgrading from 1.0.1 or
 earlier?** Quit Citrus Battery and replace the app in Applications with this version.
 Your battery history and preferences are kept.
+
+## New in 1.3
+
+- **Sleep page.** Every sleep on battery is kept, with the average drain, loss per
+  sleep, total lost and brief wakes for the last 7, 30 or 90 days, all time or dates
+  you choose. A chart shows each sleep's drain per hour and a table lists when the Mac
+  slept and woke, for how long and what it lost.
+- **Why the Mac woke.** For each sleep, the reasons macOS woke the Mac briefly with
+  the screen off: scheduled tasks, network upkeep, push notifications, or Wi-Fi and
+  Bluetooth, and which scheduled tasks woke it most. Click a sleep in the chart or
+  table to see just that sleep. **Show Details…** lists every brief wake with how long
+  the Mac stayed awake, what kept it awake and which apps iCloud or background
+  downloads worked for. Reasons come from macOS's power log, which keeps about a week,
+  so they start with sleeps from the week before you install this version.
+- **Energy by app.** A new card on the This Mac page ranks apps by the energy they
+  used over the last hour, 24 hours, 7 days or 30 days, in all or on battery only,
+  with helpers counted towards their app. On Intel Macs it ranks by processor time.
+- **Apps preventing sleep.** The menu and the This Mac page show apps keeping the Mac
+  awake or its display on, such as a call, audio playing or `caffeinate`, and for how
+  long. The menu also lists apps using significant energy, as macOS's battery menu does.
+- **Settings in the main window.** Settings is now a page in the sidebar, laid out like
+  System Settings. Pick the menu bar items you want instead of typing a format; text
+  you set up in an earlier version is kept. Battery icon has its own switch, and new
+  installs show percentages the way macOS does.
+- **Software Update-style checks.** Settings shows the installed version with a
+  **Check Now** button and the result in place, with **Update Now…** when one is ready.
+- **The current macOS look.** The app and its menu use the system's own glass and
+  styling on macOS 26 or later.
+- **Power history.** Hover over a chart to see the exact time. The 7 and 30 day views
+  appear once there's that much history. The Mac's details also show CPU usage and Low
+  Power Mode, and say "Calculating…" while macOS works out the time remaining.
+- **Backups include sleep history.** Backups now carry sleeps and their wake reasons,
+  and importing one skips what's already there. Sleeps from another Mac's backup are
+  kept apart from this Mac's. A damaged backup is refused whole instead of being
+  partly imported, and imports run without freezing the window.
+- **Fixes.** The iPhone/iPad charge notification now arrives when a device finishes
+  charging at 100%. Save Now no longer saves an unchanged reading twice. Charts, the
+  Advanced Viewer and History stay responsive with a month of readings or a slow
+  external drive, and saved work finishes before the app quits.
+
+Your history is upgraded the first time 1.3 opens it. Earlier versions can still open
+it afterwards, but don't record sleep reasons or app energy.
 
 ## New in 1.2.1
 
@@ -75,7 +117,8 @@ Your battery history and preferences are kept.
 ## Included features
 
 Mac battery health and its forecast, charge cycles, temperature, cell voltages,
-power readings, a charger check, sleep drain, charge limit detection, iPhone/iPad
+power readings, a charger check, sleep drain and history with wake reasons, energy
+use by app, apps preventing sleep, charge limit detection, iPhone/iPad
 monitoring over USB and Wi-Fi, automatic history recording, lifetime data, an
 advanced hardware viewer, a customizable menu bar, notifications and Open at Login.
 

@@ -148,8 +148,8 @@ Click any screenshot to see it at full resolution.
 - macOS's own battery icon, drawn by macOS: filled to the exact charge, with a bolt
   while charging and a plug when charging is paused, yellow in Low Power Mode and red
   when nearly empty. Optionally with the percentage inside, as macOS can show it.
-- Status text you can customise with placeholders (`%CHARGE%`, `%CC%`, `%CUSTEMP%`,
-  `%HEALTH%`, `%TIMEREM%`, `%STATUS%`, `%SYSWATT%`, `%BATWATT%`, `%CHARGER%`).
+- Status text built from the items you pick: charge, cycles, temperature, health,
+  time remaining, charge status, system usage, battery in/out and charger.
 - A menu styled like Control Center's, with glass on macOS 26 or later: charge and
   health, battery details, Low Power Mode and **Charging On Hold** status, your iPhones
   and iPads, and a shortcut to macOS's Battery settings.
