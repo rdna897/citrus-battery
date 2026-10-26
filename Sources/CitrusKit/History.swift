@@ -346,7 +346,7 @@ public final class HistoryStore: @unchecked Sendable {
                     dataVersion: int(statement, 11) ?? 1,
                     comment: text(statement, 12)
                 )
-                if HistoryValidation.entry(entry) { result.append(entry) }
+                if let reading = HistoryValidation.reading(entry) { result.append(reading) }
             }
             return result
         }
@@ -736,6 +736,9 @@ public final class HistoryStore: @unchecked Sendable {
             let statement = try prepare("""
                 SELECT e.device_serial, e.device_name, e.device_model, e.device_type, COUNT(*), MAX(e.date), d.auto_record
                 FROM entries e LEFT JOIN devices d ON d.serial = e.device_serial
+                WHERE e.device_serial <> ''
+                    AND e.date BETWEEN \(HistoryValidation.dates.lowerBound) AND \(HistoryValidation.dates.upperBound)
+                    AND e.data_version BETWEEN \(HistoryValidation.dataVersions.lowerBound) AND \(HistoryValidation.dataVersions.upperBound)
                 GROUP BY e.device_serial ORDER BY MAX(e.date) DESC
                 """)
             defer { sqlite3_finalize(statement) }

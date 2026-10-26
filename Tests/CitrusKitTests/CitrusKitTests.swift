@@ -1687,7 +1687,7 @@ struct FakeSMC: SMCReading {
         #expect(try store.entries().isEmpty)
     }
 
-    @Test func importAndLoadUseTheSameBounds() throws {
+    @Test func loadingOmitsBadFiguresButImportStillRejectsThem() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("bounds-\(UUID()).sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = try HistoryStore(url: url)
@@ -1701,7 +1701,8 @@ struct FakeSMC: SMCReading {
             VALUES (1792000000, 1792003600, 9223372036854775807, -1, 4500, 9223372036854775807);
             INSERT INTO dark_wakes (date, reason, seconds) VALUES (1792000000, 'other', 9223372036854775807);
             """, nil, nil, nil) == SQLITE_OK)
-        #expect(try store.entries().isEmpty)
+        let entry = try #require(try store.entries().first)
+        #expect(entry.fullChargeCapacity == nil)
         #expect(try store.sleepSessions().isEmpty)
         #expect(try store.darkWakes().isEmpty)
         let bad = Data(#"""
@@ -2223,5 +2224,47 @@ struct FakeSMC: SMCReading {
         defer { sqlite3_close(db) }
         #expect(sqlite3_exec(db, "PRAGMA user_version = 2", nil, nil, nil) == SQLITE_OK)
         #expect(throws: HistoryError.newerSchema) { try HistoryStore(url: url) }
+    }
+}
+
+@Suite struct HistoricalReadingTests {
+    @Test func badOptionalFiguresStayVisibleAndExportable() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("optional-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try HistoryStore(url: url)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, """
+            INSERT INTO entries (date, device_type, device_serial, device_name, device_model,
+                cycle_count, design_capacity, full_charge_capacity, data_version)
+            VALUES (1792000000, 'mac', 'M', 'Mac', 'Mac', 100, 0, 4000, 1),
+                   (1792000001, 'mac', 'M', 'Mac', 'Mac', -1, 4500, 4000, 1),
+                   (1792000002, 'mac', 'M', 'Mac', 'Mac', 100, 4500, -1, 1),
+                   (1792000003, 'mac', '', 'Mac', 'Mac', 100, 4500, 4000, 1),
+                   (1792000004, 'mac', 'BAD', 'Mac', 'Mac', 100, 4500, 4000, 0),
+                   (1e100, 'mac', 'BAD', 'Mac', 'Mac', 100, 4500, 4000, 1);
+            """, nil, nil, nil) == SQLITE_OK)
+        let entries = try store.entries(deviceSerial: "M")
+        #expect(entries.count == 3)
+        let old = try #require(entries.last)
+        #expect(old.designCapacity == nil && old.cycleCount == 100 && old.fullChargeCapacity == 4000)
+        #expect(entries[0].fullChargeCapacity == nil && entries[1].cycleCount == nil)
+        let devices = try store.devices(defaultAutoRecord: true)
+        #expect(devices.count == 1 && devices.first?.serial == "M")
+        #expect(devices.first?.entryCount == entries.count)
+        let backup = try store.exportBackup()
+        let restored = try HistoryStore(url: nil)
+        #expect(try restored.importBackup(backup).entries == entries.count)
+        let exported = try #require(try restored.entries().last)
+        #expect(exported.designCapacity == nil && exported.fullChargeCapacity == 4000)
+        for version in [1, 2] {
+            let damaged = Data("""
+                {"format":"citrus-battery-history","version":\(version),"entries":[
+                 {"id":0,"date":"2026-01-02T00:00:00Z","deviceType":"mac","deviceSerial":"M",
+                  "deviceName":"Mac","deviceModel":"Mac","dataVersion":1,"designCapacity":0}]}
+                """.utf8)
+            #expect(throws: HistoryError.damagedBackup) { try restored.importBackup(damaged) }
+        }
     }
 }

@@ -6,8 +6,11 @@ enum HistoryValidation {
     static let maximumCount = 1_000_000
     static let maximumWakeSeconds = 7 * 86_400
 
+    static let dates: ClosedRange<Double> = -62_135_596_800...253_402_300_799
+    static let dataVersions = 1...1000
+
     static func date(_ date: Date) -> Bool {
-        (-62_135_596_800...253_402_300_799).contains(date.timeIntervalSince1970)
+        dates.contains(date.timeIntervalSince1970)
     }
 
     static func entry(_ entry: HistoryEntry) -> Bool {
@@ -15,10 +18,10 @@ enum HistoryValidation {
             && (entry.cycleCount.map { (0...maximumCount).contains($0) } ?? true)
             && (entry.designCapacity.map { (1...maximumCapacity).contains($0) } ?? true)
             && (entry.fullChargeCapacity.map { (0...maximumCapacity).contains($0) } ?? true)
-            && (1...1000).contains(entry.dataVersion)
+            && dataVersions.contains(entry.dataVersion)
     }
 
-    /// A live reading with any out-of-range figures left out, so a device that
+    /// A reading with any out-of-range figures left out, so a device that
     /// reports, say, a design capacity of 0 still gets its reading saved; nil
     /// when what identifies it (date, serial, data version) isn't usable.
     static func reading(_ entry: HistoryEntry) -> HistoryEntry? {
