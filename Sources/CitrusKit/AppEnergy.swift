@@ -147,3 +147,26 @@ public enum AppEnergyPeriod: String, CaseIterable, Identifiable {
     public var usesRecentReadings: Bool { self == .hour }
 }
 
+
+/// Tracks every power reading between energy samples, including a change to
+/// the adapter and back that would be missed by comparing just the endpoints.
+public struct BatteryUsageInterval: Sendable {
+    private var onBattery: Bool?
+    private var changed = false
+    private var wasOnBatteryAtLastSample = false
+
+    public init() {}
+
+    public mutating func observe(onBattery: Bool) {
+        if let previous = self.onBattery, previous != onBattery { changed = true }
+        self.onBattery = onBattery
+    }
+
+    /// Mixed intervals cannot be apportioned reliably, so count none as battery use.
+    public mutating func finish() -> Bool {
+        let batteryOnly = wasOnBatteryAtLastSample && onBattery == true && !changed
+        wasOnBatteryAtLastSample = onBattery == true
+        changed = false
+        return batteryOnly
+    }
+}

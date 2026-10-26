@@ -47,7 +47,7 @@ final class HistoryController: ObservableObject {
     /// them could span nearly two; this keeps "the last hour" exact.
     private var recentAppUsage: [(date: Date, usage: [String: AppUsage], onBattery: Bool)] = []
     private var lastEnergyReading = Date.distantPast
-    private var wasOnBatteryAtLastReading = false
+    private var energyPowerSource = BatteryUsageInterval()
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -63,7 +63,10 @@ final class HistoryController: ObservableObject {
         reload()
         observers.append(monitor.$battery
             .compactMap { $0 }
-            .sink { [weak self] battery in self?.considerAutoRecord(mac: battery) })
+            .sink { [weak self] battery in
+                self?.energyPowerSource.observe(onBattery: !battery.isExternalPowerConnected)
+                self?.considerAutoRecord(mac: battery)
+            })
         // `$power` publishes after `battery` has been updated for the same reading.
         observers.append(monitor.$power
             .sink { [weak self] power in self?.recordPower(power) })
@@ -383,9 +386,7 @@ final class HistoryController: ObservableObject {
         // A reading covers the minute before it. If the power source changed in
         // that minute, how much was on battery isn't known, so none of it counts
         // as battery use: an undercount rather than a guess.
-        let onBatteryNow = !(monitor?.battery?.isExternalPowerConnected ?? true)
-        let onBattery = onBatteryNow && wasOnBatteryAtLastReading
-        wasOnBatteryAtLastReading = onBatteryNow
+        let onBattery = energyPowerSource.finish()
         let now = Date()
         perform { try $0.addAppUsage(usage, at: now, onBattery: onBattery) }
         recentAppUsage.append((now, usage, onBattery))

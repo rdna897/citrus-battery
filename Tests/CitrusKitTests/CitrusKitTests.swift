@@ -1993,3 +1993,29 @@ struct FakeSMC: SMCReading {
         #expect(count == 1 && joules == 60)
     }
 }
+
+@Suite struct BatteryUsageIntervalTests {
+    @Test func tracksChangesBetweenSampleEndpoints() {
+        var interval = BatteryUsageInterval()
+        let samples: [(power: [Bool], batteryOnly: Bool)] = [
+            ([true], false), ([true], true), ([false, true], false), ([], true),
+            ([false], false), ([], false), ([true], false), ([], true)
+        ]
+        for sample in samples {
+            for onBattery in sample.power { interval.observe(onBattery: onBattery) }
+            let batteryOnly = interval.finish()
+            #expect(batteryOnly == sample.batteryOnly)
+        }
+    }
+
+    @Test func unknownPowerDoesNotCountAsBatteryUse() {
+        var interval = BatteryUsageInterval()
+        let unknown = interval.finish()
+        #expect(!unknown)
+        interval.observe(onBattery: true)
+        let firstKnown = interval.finish()
+        #expect(!firstKnown)
+        let wholeInterval = interval.finish()
+        #expect(wholeInterval)
+    }
+}
