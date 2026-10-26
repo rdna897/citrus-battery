@@ -1854,3 +1854,97 @@ struct FakeSMC: SMCReading {
         #expect(try store.sleepSessions().allSatisfy { $0.appsLogged && !$0.appsReadFailed })
     }
 }
+
+@Suite struct BackupTransactionTests {
+    @Test func duplicatesInOneBackupAccumulateDetails() throws {
+        let data = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "sleepSessions":[
+              {"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,"endCapacity":3900,"fullChargeCapacity":4500},
+              {"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,"endCapacity":3900,"fullChargeCapacity":4500,"briefWakes":3,"appsReadFailed":true},
+              {"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z","startCapacity":4000,"endCapacity":3900,"fullChargeCapacity":4500,"wakesLogged":true,"appsLogged":true}],
+             "darkWakes":[
+              {"date":"2026-01-02T01:00:00Z","reason":"wireless","seconds":5,"apps":["Photos"]},
+              {"date":"2026-01-02T01:00:00Z","reason":"pushNotification","apps":["Notes"]},
+              {"date":"2026-01-02T01:00:00Z","reason":"wireless","holders":["cloudd"],"apps":["Mail"]}]}
+            """#.utf8)
+        for hasExistingRows in [false, true] {
+            let store = try HistoryStore(url: nil)
+            if hasExistingRows {
+                let date = try #require(ISO8601DateFormatter().date(from: "2026-01-02T00:00:00Z"))
+                try store.insert(SleepSession(start: date, end: date + 8 * 3600, startCapacity: 4000,
+                                               endCapacity: 3900, fullChargeCapacity: 4500, mac: "M"))
+                try store.insert([DarkWake(date: date + 3600, reason: .wireless, mac: "M")], loggedSessions: [])
+            }
+            let result = try store.importBackup(data, mac: "M")
+            #expect(result.sleepSessions == (hasExistingRows ? 0 : 1))
+            let sleeps = try store.sleepSessions()
+            #expect(sleeps.count == 1)
+            #expect(sleeps.first?.briefWakes == 3)
+            #expect(sleeps.first?.wakesLogged == true && sleeps.first?.appsLogged == true)
+            #expect(sleeps.first?.appsReadFailed == false)
+            let wakes = try store.darkWakes()
+            #expect(wakes.count == 1)
+            #expect(wakes.first?.reason == .pushNotification && wakes.first?.seconds == 5)
+            #expect(wakes.first?.holders == ["cloudd"])
+            #expect(wakes.first?.apps == ["Photos", "Notes", "Mail"])
+        }
+    }
+
+    @Test func failureAtTheLastTableRollsBackTheWholeImport() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("rollback-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try HistoryStore(url: url)
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        let sleep = SleepSession(start: date, end: date + 3600, startCapacity: 4000, endCapacity: 3900,
+                                 fullChargeCapacity: 4500, mac: "M")
+        try store.insert(sleep)
+        let before = try store.exportBackup()
+        let source = try HistoryStore(url: nil)
+        var richer = sleep
+        richer.briefWakes = 2
+        richer.appsLogged = true
+        try source.insert(richer)
+        richer.start += 7200
+        richer.end += 7200
+        try source.insert(richer)
+        try source.insert(HistoryEntry(date: date, deviceType: .mac, deviceSerial: "M",
+                                       deviceName: "Mac", deviceModel: "Mac"))
+        try source.insert([DarkWake(date: date + 60, reason: .wireless, mac: "M")], loggedSessions: [])
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, """
+            CREATE TRIGGER reject_wake BEFORE INSERT ON dark_wakes
+            BEGIN SELECT RAISE(ABORT, 'injected failure'); END;
+            """, nil, nil, nil) == SQLITE_OK)
+        #expect(throws: HistoryError.self) { try store.importBackup(source.exportBackup()) }
+        #expect(try store.exportBackup() == before)
+    }
+
+    @Test func nestedSavepointsRollBackOnlyTheirOwnWork() throws {
+        let store = try HistoryStore(url: nil)
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        func entry(_ serial: String) -> HistoryEntry {
+            HistoryEntry(date: date, deviceType: .mac, deviceSerial: serial, deviceName: "Mac", deviceModel: "Mac")
+        }
+        try store.transaction {
+            try store.insert(entry("before"))
+            do {
+                try store.transaction {
+                    try store.insert(entry("inner"))
+                    throw HistoryError.database("injected failure")
+                }
+            } catch {}
+            try store.insert(entry("after"))
+        }
+        #expect(Set(try store.entries().map(\.deviceSerial)) == ["before", "after"])
+        #expect(throws: HistoryError.self) {
+            try store.transaction {
+                try store.transaction { try store.insert(entry("released inner")) }
+                throw HistoryError.database("outer failure")
+            }
+        }
+        #expect(Set(try store.entries().map(\.deviceSerial)) == ["before", "after"])
+    }
+}

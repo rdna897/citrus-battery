@@ -341,7 +341,8 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Sessions are kept indefinitely: a row is a few dozen bytes, so years of
     /// nightly sleeps stay well under a megabyte.
-    public func insert(_ session: SleepSession) throws {
+    @discardableResult
+    public func insert(_ session: SleepSession) throws -> Int64 {
         try locked {
             let statement = try prepare("""
                 INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity,
@@ -359,6 +360,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 8, session.appsReadFailed ? Self.appsReadFailed : session.appsLogged ? 1 : 0)
             bind(statement, 9, session.mac)
             try step(statement)
+            return sqlite3_last_insert_rowid(db)
         }
     }
 
@@ -816,7 +818,7 @@ public final class HistoryStore: @unchecked Sendable {
                 if let current = existing[key(session)] {
                     try upgrade(current, with: session)
                 } else {
-                    try insert(session)
+                    session.id = try insert(session)
                     existing[key(session)] = session
                     sessions += 1
                 }
@@ -854,7 +856,7 @@ public final class HistoryStore: @unchecked Sendable {
     /// more specific reason (a push notification over plain Wi-Fi), the apps of
     /// both, and anything only one of them has.
     private func merge(_ imported: [DarkWake]) throws {
-        let saved = Dictionary(try darkWakes().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var saved = Dictionary(try darkWakes().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let statement = try prepare("""
             INSERT OR REPLACE INTO dark_wakes (date, reason, detail, seconds, holders, apps, mac)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -883,6 +885,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 6, Self.list(merged.apps))
             bind(statement, 7, merged.mac ?? "")
             try step(statement)
+            saved[merged.id] = merged
         }
     }
 
