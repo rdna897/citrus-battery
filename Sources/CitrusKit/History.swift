@@ -468,6 +468,7 @@ public final class HistoryStore: @unchecked Sendable {
     /// Assigns sleeps and wakes saved before Macs were recorded to `mac`: until
     /// then only the Mac running the app saved them.
     public func claimSleepData(for mac: String) throws {
+        guard !mac.isEmpty else { return }
         try transaction {
             let unclaimed = try darkWakes().filter { $0.mac == nil }.map { wake in
                 var wake = wake
@@ -475,7 +476,23 @@ public final class HistoryStore: @unchecked Sendable {
                 return wake
             }
             try merge(unclaimed)
-            try execute("DELETE FROM dark_wakes WHERE mac = ''")
+            let remove = try prepare("DELETE FROM dark_wakes WHERE mac = '' AND date = ?")
+            defer { sqlite3_finalize(remove) }
+            for wake in unclaimed {
+                sqlite3_reset(remove)
+                bind(remove, 1, wake.date.timeIntervalSince1970)
+                try step(remove)
+            }
+            // Invalid rows are skipped by the loader. Retain them too, assigning
+            // those without a collision just as earlier versions did.
+            let claim = try prepare("""
+                UPDATE dark_wakes AS unclaimed SET mac = ?1 WHERE mac = '' AND NOT EXISTS (
+                    SELECT 1 FROM dark_wakes AS claimed WHERE claimed.mac = ?1 AND claimed.date = unclaimed.date
+                )
+                """)
+            defer { sqlite3_finalize(claim) }
+            bind(claim, 1, mac)
+            try step(claim)
             let statement = try prepare("UPDATE sleep_sessions SET mac = ? WHERE mac IS NULL")
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, mac)

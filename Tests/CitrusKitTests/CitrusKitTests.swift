@@ -2080,3 +2080,58 @@ struct FakeSMC: SMCReading {
         #expect(throws: HistoryError.self) { try store.appUsageStart() }
     }
 }
+
+@Suite struct HistoryCompatibilityTests {
+    @Test func migrationAndClaimRetainDetailsAndMalformedRows() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("preserve-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, """
+            CREATE TABLE dark_wakes (date REAL PRIMARY KEY, reason TEXT NOT NULL, detail TEXT,
+                seconds INTEGER, holders TEXT, apps TEXT, mac TEXT);
+            INSERT INTO dark_wakes VALUES (1792000000, 'pushNotification', 'detail', 5, 'cloudd', 'Photos', NULL);
+            INSERT INTO dark_wakes VALUES (1792000001, 'wireless', NULL, 7, 'powerd', 'Notes', 'A');
+            INSERT INTO dark_wakes VALUES (1792000002, 'other', NULL, 9223372036854775807, NULL, NULL, NULL);
+            INSERT INTO dark_wakes VALUES (1792000003, 'other', NULL, -1, NULL, NULL, NULL);
+            """, nil, nil, nil) == SQLITE_OK)
+        let store = try HistoryStore(url: url)
+        let expected = DarkWake(date: Date(timeIntervalSince1970: 1792000000), reason: .pushNotification,
+                                detail: "detail", seconds: 5, holders: ["cloudd"], apps: ["Photos"])
+        #expect(try store.darkWakes().first == expected)
+        #expect(try store.darkWakes().count == 2)
+        try store.claimSleepData(for: "")
+        #expect(try store.darkWakes().first == expected)
+        // A damaged unclaimed wake can also collide with a valid named wake.
+        try store.insert([DarkWake(date: Date(timeIntervalSince1970: 1792000002), reason: .wireless, mac: "M")],
+                         loggedSessions: [])
+        try store.claimSleepData(for: "M")
+        #expect(try store.darkWakes().first?.apps == ["Photos"])
+        var statement: OpaquePointer?
+        #expect(sqlite3_prepare_v2(db, "SELECT COUNT(*), SUM(seconds = 9223372036854775807), SUM(mac = 'M' AND seconds = -1) FROM dark_wakes",
+                                   -1, &statement, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        #expect(sqlite3_step(statement) == SQLITE_ROW)
+        #expect(sqlite3_column_int(statement, 0) == 5)
+        #expect(sqlite3_column_int(statement, 1) == 1)
+        #expect(sqlite3_column_int(statement, 2) == 1)
+    }
+
+    @Test func invalidEntriesRejectBothBackupVersionsBeforeAnyWrites() throws {
+        let store = try HistoryStore(url: nil)
+        for version in [1, 2] {
+            let valid = Data("""
+                {"format":"citrus-battery-history","version":\(version),"entries":[
+                 {"id":0,"date":"2026-01-02T00:00:00Z","deviceType":"mac","deviceSerial":"M",
+                  "deviceName":"Mac","deviceModel":"Mac","dataVersion":1,"fullChargeCapacity":4500}]}
+                """.utf8)
+            for value in [-1, Int.min, Int.max] {
+                let damaged = Data(String(decoding: valid, as: UTF8.self)
+                    .replacingOccurrences(of: "4500", with: String(value)).utf8)
+                #expect(throws: HistoryError.damagedBackup) { try store.importBackup(damaged) }
+                #expect(try store.entries().isEmpty)
+            }
+        }
+    }
+}
