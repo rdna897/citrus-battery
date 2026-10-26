@@ -163,6 +163,8 @@ final class HistoryController: ObservableObject {
     // MARK: Sleep
 
     private func willSleep() {
+        energyMeter.reset()
+        energyPowerSource = BatteryUsageInterval()
         sleepStarted = Date()
         let reading = MacBatteryReader.read()
         // A sleep still waiting for the gauge to refresh after the last wake ends
@@ -186,6 +188,9 @@ final class HistoryController: ObservableObject {
     /// Measures the sleep once the gauge has refreshed after waking (about once a
     /// minute); until then it still reports the values from before sleep.
     private func didWake() {
+        energyMeter.reset()
+        energyPowerSource = BatteryUsageInterval()
+        lastEnergyReading = .distantPast
         if let start = sleepStarted, Date().timeIntervalSince(start) >= 60 {
             let period = DateInterval(start: start, end: Date())
             perform { try $0.insertSleepPeriod(period) }

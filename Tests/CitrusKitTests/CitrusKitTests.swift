@@ -2268,3 +2268,37 @@ struct FakeSMC: SMCReading {
         }
     }
 }
+
+@Suite struct AppEnergyGapTests {
+    @Test func discardsLongGapsAndResumesFromTheNewBaseline() {
+        var meter = AppEnergyMeter()
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        func measure(_ seconds: Int, total: Double, started: UInt64 = 1) -> [String: AppUsage] {
+            meter.measure(readings: [.init(pid: 10, started: started, usage: AppUsage(joules: total, cpuSeconds: total))],
+                          at: UInt64(seconds + 10), now: date + Double(seconds), owner: { _ in "App" })
+        }
+        #expect(measure(0, total: 10).isEmpty)
+        #expect(measure(60, total: 15)["App"] == AppUsage(joules: 5, cpuSeconds: 5))
+        #expect(measure(3600, total: 500).isEmpty)
+        #expect(measure(3660, total: 503)["App"] == AppUsage(joules: 3, cpuSeconds: 3))
+        meter.reset()
+        #expect(measure(3720, total: 510).isEmpty)
+        #expect(measure(3780, total: 512)["App"] == AppUsage(joules: 2, cpuSeconds: 2))
+        // Even a process that started during the gap has no assignable interval.
+        #expect(measure(7200, total: 100, started: 5000).isEmpty)
+        #expect(measure(7260, total: 101, started: 5000)["App"] == AppUsage(joules: 1, cpuSeconds: 1))
+    }
+
+    @Test func choosesTheOlderFlavourOnlyWhenUnsupported() {
+        for (error, expected) in [(Int32(0), RUSAGE_INFO_V6), (EINVAL, RUSAGE_INFO_V4),
+                                  (ENOTSUP, RUSAGE_INFO_V4), (EPERM, RUSAGE_INFO_V6), (ESRCH, RUSAGE_INFO_V6)] {
+            var calls: [Int32] = []
+            let flavour = AppEnergyMeter.rusageFlavour { requested in
+                calls.append(requested)
+                return error
+            }
+            #expect(flavour == expected)
+            #expect(calls == [RUSAGE_INFO_V6])
+        }
+    }
+}

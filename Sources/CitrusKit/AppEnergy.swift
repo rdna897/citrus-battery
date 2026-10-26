@@ -33,28 +33,49 @@ public struct AppEnergyMeter {
     private var last: [ProcessKey: (usage: AppUsage, owner: String)] = [:]
     /// When the previous reading was taken (mach absolute time), or nil before the first.
     private var lastReading: UInt64?
+    private var lastDate: Date?
+    static let maximumInterval: TimeInterval = 3 * 60
+
+    struct ProcessReading {
+        var pid: pid_t
+        var started: UInt64
+        var usage: AppUsage
+    }
 
     public init() {}
+
+    /// A sleep has no reliable place in the minute or hour totals.
+    public mutating func reset() {
+        last = [:]
+        lastReading = nil
+        lastDate = nil
+    }
 
     /// Usage per app since the previous call, by app path (or executable path
     /// for processes outside an app). Empty on the first call. A process that
     /// starts and exits between two calls isn't seen, so its use isn't counted.
     public mutating func measure() -> [String: AppUsage] {
+        measure(readings: Self.readAll(), at: mach_absolute_time(), now: Date(), owner: Self.owner)
+    }
+
+    mutating func measure(readings: [ProcessReading], at ticks: UInt64, now: Date,
+                          owner: (pid_t) -> String) -> [String: AppUsage] {
+        if let lastDate, now.timeIntervalSince(lastDate) > Self.maximumInterval || now < lastDate { reset() }
+        lastDate = now
         var current: [ProcessKey: (usage: AppUsage, owner: String)] = [:]
         var result: [String: AppUsage] = [:]
         let previousReading = lastReading
-        lastReading = mach_absolute_time()
-        for (pid, info) in Self.readAll() {
-            let key = ProcessKey(pid: pid, started: info.ri_proc_start_abstime)
-            let usage = AppUsage(joules: Double(info.ri_energy_nj) / 1e9,
-                                 cpuSeconds: Double(info.ri_user_time + info.ri_system_time) * Self.secondsPerTick)
+        lastReading = ticks
+        for reading in readings {
+            let key = ProcessKey(pid: reading.pid, started: reading.started)
+            let usage = reading.usage
             guard let previous = last[key] else {
-                let owner = Self.owner(of: pid)
+                let owner = owner(reading.pid)
                 current[key] = (usage, owner)
                 // Started since the last reading: everything it has used is from
                 // this span. Otherwise it was running before the first reading,
                 // so its totals so far aren't.
-                if let previousReading, info.ri_proc_start_abstime > previousReading,
+                if let previousReading, reading.started > previousReading,
                    usage.joules > 0 || usage.cpuSeconds > 0 {
                     result[owner, default: AppUsage()] = result[owner, default: AppUsage()] + usage
                 }
@@ -79,18 +100,40 @@ public struct AppEnergyMeter {
         return Double(timebase.numer) / Double(max(timebase.denom, 1)) / 1e9
     }()
 
-    private static func readAll() -> [(pid_t, rusage_info_v6)] {
+    /// Probe this process once: another process may simply deny access.
+    private static let usageFlavour: Int32 = rusageFlavour { flavour in
+        var info = rusage_info_v6()
+        let status = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(getpid(), flavour, $0)
+            }
+        }
+        return status == 0 ? 0 : errno
+    }
+
+    static func rusageFlavour(probe: (Int32) -> Int32) -> Int32 {
+        let error = probe(RUSAGE_INFO_V6)
+        return error == EINVAL || error == ENOTSUP ? RUSAGE_INFO_V4 : RUSAGE_INFO_V6
+    }
+
+    private static func readAll() -> [ProcessReading] {
         var pids = [pid_t](repeating: 0, count: 8192)
         let count = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
+        let flavour = usageFlavour
         return pids.prefix(max(count, 0)).compactMap { pid in
             guard pid > 0 else { return nil }
+            // V4 is a prefix of V6. A zeroed V6 buffer leaves energy unavailable
+            // on macOS versions that only support V4, while retaining CPU time.
             var info = rusage_info_v6()
             let status = withUnsafeMutablePointer(to: &info) { pointer in
                 pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-                    proc_pid_rusage(pid, RUSAGE_INFO_V6, $0)
+                    proc_pid_rusage(pid, flavour, $0)
                 }
             }
-            return status == 0 ? (pid, info) : nil
+            guard status == 0 else { return nil }
+            return ProcessReading(pid: pid, started: info.ri_proc_start_abstime,
+                                  usage: AppUsage(joules: flavour == RUSAGE_INFO_V6 ? Double(info.ri_energy_nj) / 1e9 : 0,
+                                                  cpuSeconds: (Double(info.ri_user_time) + Double(info.ri_system_time)) * secondsPerTick))
         }
     }
 
