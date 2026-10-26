@@ -46,12 +46,13 @@ struct MacDetailContent: View {
                     PreventingSleepCard(blockers: sleepBlockers)
                 }
                 powerSection(battery)
-                AppEnergyCard()
+                // The charger belongs with the power readings above it.
                 if battery.isExternalPowerConnected, let adapter = battery.adapter {
                     ChargerCard(adapter: adapter, inputWatts: chargerInputWatts(battery),
                                 advice: ChargerCheck.advice(battery: battery, inputWatts: chargerInputWatts(battery),
                                                             systemWatts: monitor.displayedSystemWatts))
                 }
+                AppEnergyCard()
                 if !sleepSessions.isEmpty {
                     SleepCard(sessions: sleepSessions)
                 }

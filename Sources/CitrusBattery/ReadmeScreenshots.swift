@@ -23,6 +23,8 @@ enum ReadmeScreenshots {
             PreferenceKey.capacityStyle: "raw",
             PreferenceKey.updateInterval: "delayed",
             PreferenceKey.powerChartPeriod: PowerPeriod.day.rawValue,
+            PreferenceKey.sleepPeriod: SleepPeriod.week.rawValue,
+            PreferenceKey.appEnergyPeriod: AppEnergyPeriod.day.rawValue,
             PreferenceKey.autosaveNewDevices: true,
             "AppleLocale": "en_GB",
             "AppleLanguages": ["en"],
@@ -51,12 +53,19 @@ enum ReadmeScreenshots {
                 batterySerial: nil, cycleCount: 40 + index * 2,
                 designCapacity: 3582, fullChargeCapacity: capacity))
         }
-        for (night, (hours, lost)) in [(8.2, 140), (7.5, 120), (9.1, 150)].enumerated() {
-            let end = date.addingTimeInterval(-Double(night) * 86400 - 3 * 3600)
-            try store.insert(SleepSession(start: end.addingTimeInterval(-hours * 3600), end: end,
-                                          startCapacity: 3900, endCapacity: 3900 - lost, fullChargeCapacity: 4518))
-        }
+        try insertSampleSleeps(into: store)
         try insertSamplePower(into: store)
+        try insertSampleAppEnergy(into: store)
+        // The live lists read this Mac's own apps; show fictional ones instead.
+        SleepBlockerMonitor.sample = [
+            SleepBlocker(owner: "/System/Applications/Music.app", reason: "Playing audio",
+                         since: Date().addingTimeInterval(-25 * 60)),
+            SleepBlocker(owner: "/System/Applications/Utilities/Terminal.app", process: "caffeinate",
+                         since: Date().addingTimeInterval(-72 * 60)),
+        ]
+        SignificantEnergyMonitor.sample = [
+            SignificantEnergyApp(bundleIdentifier: "com.apple.Safari", displayName: "Safari", energyImpact: 2400),
+        ]
         let history = HistoryController(monitor: monitor, iosDevices: devices, store: store)
         let navigator = Navigator()
 
@@ -74,7 +83,7 @@ enum ReadmeScreenshots {
         // Scrolled down to power history, the charger check and sleep drain, while charging.
         let charging = makeMonitor(charging: true)
         try capture(dependencies(ContentView(), monitor: charging), title: "This Mac",
-                    size: NSSize(width: 1000, height: 780), scrolledTo: 330,
+                    size: NSSize(width: 1000, height: 780), scrolledTo: 600,
                     to: directory.appendingPathComponent("mac-power.png"))
         navigator.selection = .device("demo-iphone")
         try capture(dependencies(ContentView()), title: "iPhone", size: NSSize(width: 1000, height: 780),
@@ -82,6 +91,34 @@ enum ReadmeScreenshots {
         navigator.selection = .history
         try capture(dependencies(ContentView()), title: "History", size: NSSize(width: 1100, height: 780),
                     to: directory.appendingPathComponent("history.png"))
+        navigator.selection = .sleep
+        // Tall enough for the summary, advice, chart and reasons to leave the table room.
+        try capture(dependencies(ContentView()), title: "Sleep", size: NSSize(width: 1100, height: 1000),
+                    to: directory.appendingPathComponent("sleep.png"))
+        // The night with the most brief wakes, as when picking it and choosing Show Details.
+        let sessions = try store.sleepSessions(mac: "DEMO-MAC-001")
+        let wakes = try store.darkWakes(mac: "DEMO-MAC-001")
+        if let busiest = sessions.max(by: {
+            WakeBreakdown.wakes(wakes, during: [$0]).count < WakeBreakdown.wakes(wakes, during: [$1]).count
+        }) {
+            let title = busiest.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+                .hour(.twoDigits(amPM: .abbreviated)).minute(.twoDigits)) + " – "
+                + busiest.end.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+                    .hour(.twoDigits(amPM: .abbreviated)).minute(.twoDigits))
+            try capture(dependencies(WakeDetailsView(title: title, sessions: [busiest],
+                                                     wakes: WakeBreakdown.wakes(wakes, during: [busiest]))),
+                        title: "Wake Details", size: NSSize(width: 780, height: 640),
+                        to: directory.appendingPathComponent("wake-details.png"))
+        }
+        navigator.selection = .thisMac
+        try capture(dependencies(ContentView()), title: "This Mac", size: NSSize(width: 1000, height: 780),
+                    scrolledTo: 1060, to: directory.appendingPathComponent("mac-energy.png"))
+        navigator.selection = .settings
+        navigator.settingsSection = .menuBar
+        try capture(dependencies(ContentView()).environmentObject(AppUpdater())
+                        .environmentObject(Notifier(monitor: monitor, iosDevices: devices)),
+                    title: "Settings", size: NSSize(width: 1000, height: 780),
+                    to: directory.appendingPathComponent("settings.png"))
         try capture(dependencies(LifetimeAnalyzer()), title: "Battery Lifetime Data", size: NSSize(width: 920, height: 690),
                     to: directory.appendingPathComponent("lifetime.png"))
         try capture(dependencies(AdvancedViewer(sampleSections: advancedSections)), title: "Advanced Viewer",
@@ -121,13 +158,29 @@ enum ReadmeScreenshots {
         }
     }
 
-    /// Renders a SwiftUI scene straight onto the backdrop, without a window frame.
+    /// Renders a SwiftUI scene onto the backdrop without a window frame, captured
+    /// from a borderless window at its natural size: an image renderer clips the
+    /// panel, and can't draw the materials of an app built with the macOS 26 SDK.
     private static func renderMenuBar<V: View>(_ view: V, to url: URL) throws {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let cgImage = renderer.cgImage else { throw CocoaError(.fileWriteUnknown) }
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: CGFloat(cgImage.width) / 2,
-                                                          height: CGFloat(cgImage.height) / 2))
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame.size = hosting.fittingSize
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        window.center()
+        window.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        // Rows added once the panel's lists start can change its height.
+        if hosting.fittingSize != window.frame.size {
+            window.setContentSize(hosting.fittingSize)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        }
+        let image = try screenImage(of: window)
+        window.close()
         let size = NSSize(width: 1200, height: 960)
         let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
             pixelsHigh: Int(size.height * 2), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
@@ -146,6 +199,84 @@ enum ReadmeScreenshots {
         guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
         try png.write(to: url)
         print("Rendered \(url.lastPathComponent)")
+    }
+
+    /// The window as it appears on screen, at its size in points.
+    private static func screenImage(of window: NSWindow) throws -> NSImage {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("citrus-\(UUID()).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let screencapture = Process()
+        screencapture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        // No sound, no shadow (the backdrop draws its own), just this window.
+        screencapture.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]
+        try screencapture.run()
+        screencapture.waitUntilExit()
+        guard screencapture.terminationStatus == 0, let image = NSImage(contentsOf: file) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        image.size = window.frame.size
+        return image
+    }
+
+    /// Two weeks of nights on battery, with the brief wakes macOS made and why.
+    /// Already marked as read, so no logs on this Mac are consulted.
+    private static func insertSampleSleeps(into store: HistoryStore) throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = calendar.startOfDay(for: Date())
+        let tasks = ["com.apple.photoanalysisd.backgroundanalysis", "com.apple.mail.fetch",
+                     "com.apple.softwareupdated.scan"]
+        var wakes: [DarkWake] = []
+        for night in 1...14 {
+            let start = today.addingTimeInterval(Double(-night) * 86_400 + 23 * 3600 + Double((night * 7) % 40) * 60)
+            let hours = 7 + Double((night * 5) % 4) / 2
+            let end = start.addingTimeInterval(hours * 3600)
+            // One night an app kept waking the Mac; the rest are ordinary.
+            let busy = night == 4
+            let lossPerHour = busy ? 0.016 : 0.0022 + Double(night % 4) * 0.0006
+            let count = Int(hours * (busy ? 16 : Double(4 + night % 3)))
+            for index in 0..<count {
+                let at = start.addingTimeInterval(((Double(index) + 0.5) * hours * 3600 / Double(count)).rounded())
+                let wake: DarkWake
+                switch busy ? index % 4 : index % 10 {
+                case 0...3:
+                    let task = busy ? tasks[0] : tasks[index % 3]
+                    wake = DarkWake(date: at, reason: .scheduledTask, detail: task, seconds: 4 + index % 7,
+                                    holders: ["powerd", "cloudd"],
+                                    apps: task.contains("photo") ? ["com.apple.Photos"] : task.contains("mail")
+                                        ? ["com.apple.mail"] : [], mac: "DEMO-MAC-001")
+                case 4...6:
+                    wake = DarkWake(date: at, reason: .pushNotification, seconds: 3 + index % 4,
+                                    holders: ["powerd"], mac: "DEMO-MAC-001")
+                case 7...8:
+                    wake = DarkWake(date: at, reason: .networkUpkeep, seconds: 5 + index % 5,
+                                    holders: ["mDNSResponder"], mac: "DEMO-MAC-001")
+                default:
+                    wake = DarkWake(date: at, reason: .wireless, seconds: 2 + index % 3, mac: "DEMO-MAC-001")
+                }
+                wakes.append(wake)
+            }
+            try store.insert(SleepSession(start: start, end: end, startCapacity: 3900,
+                                          endCapacity: 3900 - Int(lossPerHour * hours * 4518), fullChargeCapacity: 4518,
+                                          briefWakes: count, wakesLogged: true, appsLogged: true, mac: "DEMO-MAC-001"))
+        }
+        try store.insert(wakes, loggedSessions: [])
+    }
+
+    /// A week of hourly energy for a few built-in apps, so their icons and names
+    /// are real while the figures are fictional.
+    private static func insertSampleAppEnergy(into store: HistoryStore) throws {
+        let joulesPerHour: [String: Double] = [
+            "/Applications/Safari.app": 950, "/System/Applications/Photos.app": 430,
+            "/System/Applications/Music.app": 310, "/System/Applications/Mail.app": 170,
+            "/System/Applications/Messages.app": 90, "/System/Applications/Notes.app": 45,
+        ]
+        let now = Date()
+        for hour in 0..<(7 * 24) {
+            let at = now.addingTimeInterval(-Double(hour) * 3600)
+            let busy = 0.6 + 0.4 * sin(Double(hour) / 3)
+            try store.addAppUsage(joulesPerHour.mapValues { AppUsage(joules: $0 * busy, cpuSeconds: $0 * busy / 9) },
+                                  at: at, onBattery: hour % 3 != 0)
+        }
     }
 
     /// A week of power readings: working days with a charge in the morning and
@@ -287,10 +418,15 @@ enum ReadmeScreenshots {
         ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews)
     }
 
+    /// Shows the window briefly and captures it from the screen. Drawing it offscreen
+    /// (`cacheDisplay`) can't render the system materials an app built with the
+    /// macOS 26 SDK uses, such as the sidebar's selection, which come out black.
     private static func capture<V: View>(_ view: V, title: String, size: NSSize, scrolledTo offset: CGFloat = 0,
                                          to url: URL) throws {
         let controller = NSHostingController(rootView: view.preferredColorScheme(.light))
         if #available(macOS 14.0, *) { controller.sceneBridgingOptions = .all }
+        // Keep the requested size; otherwise a long table grows the window to fit every row.
+        controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.title = title
@@ -298,30 +434,19 @@ enum ReadmeScreenshots {
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)
         window.setContentSize(size)
-        window.setFrameOrigin(NSPoint(x: -5000, y: 0))
-        window.makeKeyAndOrderFront(nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        window.center()
+        window.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(3))
         controller.view.layoutSubtreeIfNeeded()
         if offset > 0, let scrollView = scrollViews(in: controller.view)
             .max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }) {
             scrollView.hasVerticalScroller = false
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
             scrollView.reflectScrolledClipView(scrollView.contentView)
-            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
         }
         window.displayIfNeeded()
-        guard let frame = window.contentView?.superview,
-              let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
-                  pixelsWide: Int(frame.bounds.width * 2), pixelsHigh: Int(frame.bounds.height * 2),
-                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                  isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        bitmap.size = frame.bounds.size
-        frame.cacheDisplay(in: frame.bounds, to: bitmap)
-        let image = NSImage(size: frame.bounds.size)
-        image.addRepresentation(bitmap)
-        try writeFramed(image, to: url)
+        try writeFramed(screenImage(of: window), to: url)
         window.close()
         print("Rendered \(url.lastPathComponent)")
     }

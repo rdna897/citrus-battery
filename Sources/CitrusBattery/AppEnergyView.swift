@@ -187,7 +187,18 @@ final class SleepBlockerMonitor: ObservableObject {
         timer = nil
     }
 
+    #if DEBUG
+    /// Fictional apps for the README screenshots, in place of this Mac's own.
+    static var sample: [SleepBlocker]?
+    #endif
+
     private func refresh() {
+        #if DEBUG
+        if let sample = Self.sample {
+            blockers = sample
+            return
+        }
+        #endif
         Task.detached(priority: .utility) {
             let blockers = SleepBlockers.current()
             await MainActor.run { [weak self] in

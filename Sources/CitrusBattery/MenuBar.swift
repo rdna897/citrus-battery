@@ -547,7 +547,18 @@ final class SignificantEnergyMonitor: ObservableObject {
         timer = nil
     }
 
+    #if DEBUG
+    /// Fictional apps for the README screenshots, in place of this Mac's own.
+    static var sample: [SignificantEnergyApp]?
+    #endif
+
     private func refresh() {
+        #if DEBUG
+        if let sample = Self.sample {
+            apps = sample
+            return
+        }
+        #endif
         Task.detached(priority: .utility) {
             let apps = SignificantEnergy.read()
             await MainActor.run { [weak self] in self?.apps = apps }

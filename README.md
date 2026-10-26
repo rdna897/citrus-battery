@@ -9,7 +9,7 @@ reach 80%, checks your charger, and records everything the battery's gauge has
 logged over its life. It's free, open source, and every feature
 is included.
 
-> **Version 1.2.1.** Data availability varies by hardware and OS version.
+> **Version 1.3.** Data availability varies by hardware and OS version.
 
 <p align="center">
   <a href="assets/screenshots/mac-dashboard.png">
@@ -48,14 +48,30 @@ Click any screenshot to see it at full resolution.
 <table>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample battery level and power use for the last 24 hours as bar charts, with the Mac's sleep on a strip underneath, above a charger check for a 30 W USB-C adapter" width="100%"></a>
+      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample power readings with battery level and power use for the last 24 hours as bar charts, the Mac's sleep on a strip underneath, and a charger check for a 30 W USB-C adapter" width="100%"></a>
       <p><strong>Power history and charger check</strong><br><sub>See battery level and power use over time, when the Mac slept, and whether the charger is holding charging back.</sub></p>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="The menu bar with macOS's own battery icon and the charge, and below it Citrus Battery's menu with charge and health bars, battery details, an iPhone and iPad, and commands" width="70%"></a>
-      <p><strong>Menu bar</strong><br><sub>macOS's own battery icon, and a menu styled like Control Center's.</sub></p>
+      <a href="assets/screenshots/sleep.png"><img src="assets/screenshots/sleep.png" alt="Sample Sleep page for the last 7 days: average drain, loss per sleep and brief wakes, a chart of each night's drain per hour with one high night, the reasons the Mac woke, and a table of sleeps" width="100%"></a>
+      <p><strong>Sleep</strong><br><sub>How much charge each sleep cost, for any period, and why macOS kept waking the Mac.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/wake-details.png"><img src="assets/screenshots/wake-details.png" alt="Sample Wake Details for one night: 112 brief wakes, time awake, what kept the Mac awake and the apps iCloud worked for, above a table of each wake" width="100%"></a>
+      <p><strong>Wake details</strong><br><sub>Every brief wake in a sleep: how long, why, and for which app.</sub></p>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="assets/screenshots/mac-energy.png"><img src="assets/screenshots/mac-energy.png" alt="Sample Energy by App card ranking Safari, Photos, Music, Mail, Messages and Notes by energy used in the last 24 hours" width="100%"></a>
+      <p><strong>Energy by app</strong><br><sub>Which apps used the most energy over the last hour, day, week or month.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <a href="assets/screenshots/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="The menu bar with macOS's own battery icon and the charge, and below it Citrus Battery's menu with charge and health bars, battery details, an app using significant energy, two apps preventing sleep, an iPhone and iPad, and commands" width="70%"></a>
+      <p><strong>Menu bar</strong><br><sub>macOS's own battery icon, and a menu styled like Control Center's, with apps using significant energy or keeping the Mac awake.</sub></p>
     </td>
   </tr>
   <tr>
@@ -76,6 +92,12 @@ Click any screenshot to see it at full resolution.
     <td width="50%" align="center" valign="top">
       <a href="assets/screenshots/advanced.png"><img src="assets/screenshots/advanced.png" alt="Advanced Viewer with sample Mac hardware, expanded SSD health, display and USB information" width="100%"></a>
       <p><strong>Advanced hardware details</strong><br><sub>Inspect battery data, SSD health, displays and USB devices.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <a href="assets/screenshots/settings.png"><img src="assets/screenshots/settings.png" alt="Settings in the main window, laid out like System Settings, showing the menu bar items you can pick and the battery icon options" width="80%"></a>
+      <p><strong>Settings</strong><br><sub>Laid out like System Settings; pick what the menu bar shows.</sub></p>
     </td>
   </tr>
 </table>
