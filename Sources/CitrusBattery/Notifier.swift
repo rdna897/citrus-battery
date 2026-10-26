@@ -43,7 +43,8 @@ final class Notifier: NSObject, ObservableObject {
                 continue
             }
             let result = DeviceChargeAlertRule.evaluate(
-                percent: percent, isCharging: battery.isCharging, threshold: threshold,
+                percent: percent, isCharging: battery.isCharging, isFullyCharged: battery.isFullyCharged,
+                isExternalPowerConnected: battery.isExternalPowerConnected, threshold: threshold,
                 armed: deviceAlertArmed[device.udid] ?? true)
             deviceAlertArmed[device.udid] = result.armed
             if result.notify {

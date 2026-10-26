@@ -1942,7 +1942,7 @@ struct FakeSMC: SMCReading {
         #expect(Set(try store.entries().map(\.deviceSerial)) == ["before", "after"])
         #expect(throws: HistoryError.self) {
             try store.transaction {
-                try store.transaction { try store.insert(entry("released inner")) }
+                _ = try store.transaction { try store.insert(entry("released inner")) }
                 throw HistoryError.database("outer failure")
             }
         }
@@ -2157,5 +2157,31 @@ struct FakeSMC: SMCReading {
         let store = try HistoryStore(url: nil)
         try store.insertReading(Self.reading(design: 0))
         #expect(AutoRecordPolicy.isDuplicate(Self.reading(design: 0), of: try store.entries()))
+    }
+}
+
+@Suite struct DeviceChargeCompletionTests {
+    @Test(arguments: [false, true]) func notifiesWhenChargingStopsAtFull(isFullyCharged: Bool) {
+        let almost = DeviceChargeAlertRule.evaluate(percent: 99, isCharging: true, threshold: 100, armed: true)
+        #expect(!almost.notify && almost.armed)
+        let full = DeviceChargeAlertRule.evaluate(percent: 100, isCharging: false, isFullyCharged: isFullyCharged,
+                                                  isExternalPowerConnected: true, threshold: 100, armed: almost.armed)
+        #expect(full.notify && !full.armed)
+        let repeated = DeviceChargeAlertRule.evaluate(percent: 100, isCharging: false, isFullyCharged: true,
+                                                      isExternalPowerConnected: true, threshold: 100, armed: full.armed)
+        #expect(!repeated.notify && !repeated.armed)
+        let rearmed = DeviceChargeAlertRule.evaluate(percent: 95, isCharging: false, threshold: 100, armed: full.armed)
+        #expect(rearmed.armed)
+    }
+
+    @Test func staysQuietAtStartupOrOffPower() {
+        for onPower in [false, true] {
+            let result = DeviceChargeAlertRule.evaluate(percent: 100, isCharging: false, isFullyCharged: true,
+                                                        isExternalPowerConnected: onPower, threshold: 100, armed: false)
+            #expect(!result.notify)
+        }
+        let unplugged = DeviceChargeAlertRule.evaluate(percent: 100, isCharging: false, isFullyCharged: true,
+                                                       threshold: 100, armed: true)
+        #expect(!unplugged.notify && unplugged.armed)
     }
 }

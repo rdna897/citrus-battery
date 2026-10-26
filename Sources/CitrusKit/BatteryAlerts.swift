@@ -120,11 +120,14 @@ public enum DeviceChargeAlertRule {
     public static let rearmMargin = 5
 
     /// Returns whether to notify, and whether the alert is still armed afterwards.
-    public static func evaluate(percent: Int, isCharging: Bool, threshold: Int, armed: Bool) -> (notify: Bool, armed: Bool) {
+    public static func evaluate(percent: Int, isCharging: Bool, isFullyCharged: Bool = false,
+                                isExternalPowerConnected: Bool = false, threshold: Int, armed: Bool) -> (notify: Bool, armed: Bool) {
         if percent <= threshold - rearmMargin {
             return (false, true)
         }
-        if armed, isCharging, percent >= threshold {
+        // Devices stop reporting charging once full, while still on power.
+        let completed = isExternalPowerConnected && (isFullyCharged || percent >= 100)
+        if armed, isCharging || completed, percent >= threshold {
             return (true, false)
         }
         return (false, armed)
