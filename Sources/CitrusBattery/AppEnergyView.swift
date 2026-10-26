@@ -118,7 +118,7 @@ struct AppEnergyCard: View {
     }
 
     /// Intel Macs don't measure energy per process, so rank by processor time there.
-    private var measuresEnergy: Bool { apps.contains { $0.usage.joules > 0 } || batteryOnly }
+    private var measuresEnergy: Bool { apps.contains { $0.usage.joules > 0 } }
 
     private func value(_ usage: AppUsage) -> Double {
         measuresEnergy ? usage.joules : usage.cpuSeconds

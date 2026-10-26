@@ -31,21 +31,33 @@ public struct AppEnergyMeter {
     }
 
     private var last: [ProcessKey: (usage: AppUsage, owner: String)] = [:]
+    /// When the previous reading was taken (mach absolute time), or nil before the first.
+    private var lastReading: UInt64?
 
     public init() {}
 
     /// Usage per app since the previous call, by app path (or executable path
-    /// for processes outside an app). Empty on the first call.
+    /// for processes outside an app). Empty on the first call. A process that
+    /// starts and exits between two calls isn't seen, so its use isn't counted.
     public mutating func measure() -> [String: AppUsage] {
         var current: [ProcessKey: (usage: AppUsage, owner: String)] = [:]
         var result: [String: AppUsage] = [:]
+        let previousReading = lastReading
+        lastReading = mach_absolute_time()
         for (pid, info) in Self.readAll() {
             let key = ProcessKey(pid: pid, started: info.ri_proc_start_abstime)
             let usage = AppUsage(joules: Double(info.ri_energy_nj) / 1e9,
-                                 cpuSeconds: Double(info.ri_user_time + info.ri_system_time) / 1e9)
+                                 cpuSeconds: Double(info.ri_user_time + info.ri_system_time) * Self.secondsPerTick)
             guard let previous = last[key] else {
-                // New since the last reading: its totals so far aren't from this span.
-                current[key] = (usage, Self.owner(of: pid))
+                let owner = Self.owner(of: pid)
+                current[key] = (usage, owner)
+                // Started since the last reading: everything it has used is from
+                // this span. Otherwise it was running before the first reading,
+                // so its totals so far aren't.
+                if let previousReading, info.ri_proc_start_abstime > previousReading,
+                   usage.joules > 0 || usage.cpuSeconds > 0 {
+                    result[owner, default: AppUsage()] = result[owner, default: AppUsage()] + usage
+                }
                 continue
             }
             current[key] = (usage, previous.owner)
@@ -58,6 +70,14 @@ public struct AppEnergyMeter {
         last = current
         return result
     }
+
+    /// Processor times are in mach ticks: nanoseconds on Intel, but 1/24 MHz on
+    /// Apple silicon.
+    static let secondsPerTick: Double = {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        return Double(timebase.numer) / Double(max(timebase.denom, 1)) / 1e9
+    }()
 
     private static func readAll() -> [(pid_t, rusage_info_v6)] {
         var pids = [pid_t](repeating: 0, count: 8192)

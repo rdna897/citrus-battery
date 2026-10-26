@@ -1304,9 +1304,10 @@ struct FakeSMC: SMCReading {
         let bars = PowerTimeline.bars(minutes, in: domain, sleeps: [sleep], calendar: ManufactureDateTests.utc)
         #expect(bars.count == 48)
         #expect(bars.first?.watts == 6)
-        // The brief wake's minute is spread over its five-minute slot.
+        // The brief wake's minute is spread over its five-minute slot, which it lies
+        // inside: 6 W for one minute of five, not of six.
         let wake = bars.first { $0.start == Self.start + 120 * 60 }
-        #expect(wake?.watts == 1)
+        #expect(abs((wake?.watts ?? 0) - 1.2) < 1e-9)
         // Asleep without readings: no power, but the charge carries on.
         let asleep = bars.first { $0.start == Self.start + 90 * 60 }
         #expect(asleep?.watts == nil)
@@ -1561,6 +1562,21 @@ struct FakeSMC: SMCReading {
         #expect(usage.values.contains { $0.cpuSeconds > 0 })
     }
 
+    @Test func countsProcessesStartedBetweenReadings() throws {
+        var meter = AppEnergyMeter()
+        _ = meter.measure()
+        // A busy process started after the first reading, still running at the second.
+        let busy = Process()
+        busy.executableURL = URL(fileURLWithPath: "/usr/bin/yes")
+        busy.standardOutput = FileHandle.nullDevice
+        try busy.run()
+        defer { busy.terminate() }
+        Thread.sleep(forTimeInterval: 0.3)
+        let usage = meter.measure()
+        let owner = AppEnergyMeter.owner(of: busy.processIdentifier)
+        #expect((usage[owner]?.cpuSeconds ?? 0) > 0.05)
+    }
+
     @Test func storesHourlyTotals() throws {
         let store = try HistoryStore(url: nil)
         let hour = Date(timeIntervalSince1970: 1_792_000_800)
@@ -1570,7 +1586,7 @@ struct FakeSMC: SMCReading {
         let usage = try store.appUsage(since: hour)
         let a = try #require(usage.first { $0.app == "/A.app" })
         #expect(a.total == AppUsage(joules: 150, cpuSeconds: 3))
-        #expect(a.onBattery.joules == 100)
+        #expect(a.onBattery == AppUsage(joules: 100, cpuSeconds: 2))
         // Recorded by the hour; this time is on the hour.
         #expect(try store.appUsageStart() == hour)
         // Hours beyond the power timeline's retention are dropped.

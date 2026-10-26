@@ -199,6 +199,9 @@ public final class HistoryStore: @unchecked Sendable {
         // before this was recorded, until `claimSleepData(for:)` assigns them.
         try addColumnIfMissing(table: "sleep_sessions", column: "mac", type: "TEXT")
         try addColumnIfMissing(table: "dark_wakes", column: "mac", type: "TEXT")
+        // Intel Macs don't measure energy per process, so on battery only
+        // processor time can rank apps there.
+        try addColumnIfMissing(table: "app_energy", column: "battery_cpu_seconds", type: "REAL NOT NULL DEFAULT 0")
     }
 
     private func addColumnIfMissing(table: String, column: String, type: String) throws {
@@ -535,11 +538,13 @@ public final class HistoryStore: @unchecked Sendable {
         let hour = (date.timeIntervalSince1970 / 3600).rounded(.down) * 3600
         try transaction {
             let statement = try prepare("""
-                INSERT INTO app_energy (hour, app, joules, battery_joules, cpu_seconds) VALUES (?, ?, ?, ?, ?)
+                INSERT INTO app_energy (hour, app, joules, battery_joules, cpu_seconds, battery_cpu_seconds)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hour, app) DO UPDATE SET
                     joules = joules + excluded.joules,
                     battery_joules = battery_joules + excluded.battery_joules,
-                    cpu_seconds = cpu_seconds + excluded.cpu_seconds
+                    cpu_seconds = cpu_seconds + excluded.cpu_seconds,
+                    battery_cpu_seconds = battery_cpu_seconds + excluded.battery_cpu_seconds
                 """)
             defer { sqlite3_finalize(statement) }
             for (app, used) in usage {
@@ -549,6 +554,7 @@ public final class HistoryStore: @unchecked Sendable {
                 bind(statement, 3, used.joules)
                 bind(statement, 4, onBattery ? used.joules : 0)
                 bind(statement, 5, used.cpuSeconds)
+                bind(statement, 6, onBattery ? used.cpuSeconds : 0)
                 try step(statement)
             }
             let prune = try prepare("DELETE FROM app_energy WHERE hour < ?")
@@ -563,7 +569,7 @@ public final class HistoryStore: @unchecked Sendable {
     public func appUsage(since date: Date) throws -> [(app: String, total: AppUsage, onBattery: AppUsage)] {
         try locked {
             let statement = try prepare("""
-                SELECT app, SUM(joules), SUM(battery_joules), SUM(cpu_seconds) FROM app_energy
+                SELECT app, SUM(joules), SUM(battery_joules), SUM(cpu_seconds), SUM(battery_cpu_seconds) FROM app_energy
                 WHERE hour >= ? GROUP BY app
                 """)
             defer { sqlite3_finalize(statement) }
@@ -573,7 +579,8 @@ public final class HistoryStore: @unchecked Sendable {
                 guard let app = text(statement, 0) else { return }
                 result.append((app, AppUsage(joules: sqlite3_column_double(statement, 1),
                                              cpuSeconds: sqlite3_column_double(statement, 3)),
-                               AppUsage(joules: sqlite3_column_double(statement, 2))))
+                               AppUsage(joules: sqlite3_column_double(statement, 2),
+                                        cpuSeconds: sqlite3_column_double(statement, 4))))
             }
             return result
         }

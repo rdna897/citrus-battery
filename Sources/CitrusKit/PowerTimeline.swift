@@ -249,9 +249,15 @@ public enum PowerTimeline {
             let inSlot = recorded[first..<next]
             var watts: Double?
             if !inSlot.isEmpty {
-                let asleep = sleeps.compactMap { $0.intersection(with: slot)?.duration }.reduce(0, +) / 60
+                let inSleep = sleeps.compactMap { $0.intersection(with: slot) }
+                let asleep = inSleep.map(\.duration).reduce(0, +) / 60
                 let awake = Double(inSlot.count)
-                watts = inSlot.map(\.averageWatts).reduce(0, +) / max(awake + asleep, awake)
+                // A brief wake's minute lies inside a sleep: count its time once.
+                let overlap: TimeInterval = inSlot.map { (minute: PowerMinute) -> TimeInterval in
+                    let span = DateInterval(start: minute.start, duration: 60)
+                    return inSleep.compactMap { $0.intersection(with: span)?.duration }.reduce(0, +)
+                }.reduce(0, +) / 60
+                watts = inSlot.map(\.averageWatts).reduce(0, +) / max(awake + asleep - overlap, awake)
             }
             let adapterMinutes = inSlot.filter(\.onAdapter).count
             bars.append(PowerBar(start: start, end: end, watts: watts,

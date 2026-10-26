@@ -78,9 +78,16 @@ final class Notifier: NSObject, ObservableObject {
         }
     }
 
+    /// Asks for permission first if needed, and sends once it's settled, so the
+    /// first test isn't lost while macOS is still asking.
     func sendTest() {
-        requestAuthorization()
-        post(title: "Citrus Battery", body: "This is how Citrus Battery will notify you.")
+        guard let center else { return }
+        Task { @MainActor [weak self] in
+            let allowed = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            self?.refreshAuthorization()
+            guard allowed else { return }
+            self?.post(title: "Citrus Battery", body: "This is how Citrus Battery will notify you.")
+        }
     }
 
     private func evaluate(_ battery: MacBatterySnapshot) {

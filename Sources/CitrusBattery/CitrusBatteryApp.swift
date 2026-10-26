@@ -139,7 +139,13 @@ struct CitrusBatteryApp: App {
         let iosDevices = IOSDeviceMonitor()
         _monitor = StateObject(wrappedValue: monitor)
         _iosDevices = StateObject(wrappedValue: iosDevices)
-        _history = StateObject(wrappedValue: HistoryController(monitor: monitor, iosDevices: iosDevices))
+        // The packaging launch test points this at a temporary file, so it never
+        // touches the history of whoever runs it.
+        // If it can't be opened, a store in memory rather than the real one.
+        let store = ProcessInfo.processInfo.environment["CITRUS_HISTORY_PATH"].flatMap {
+            (try? HistoryStore(url: URL(fileURLWithPath: $0))) ?? (try? HistoryStore(url: nil))
+        }
+        _history = StateObject(wrappedValue: HistoryController(monitor: monitor, iosDevices: iosDevices, store: store))
         _notifier = StateObject(wrappedValue: Notifier(monitor: monitor, iosDevices: iosDevices))
     }
 

@@ -47,6 +47,7 @@ final class HistoryController: ObservableObject {
     /// them could span nearly two; this keeps "the last hour" exact.
     private var recentAppUsage: [(date: Date, usage: [String: AppUsage], onBattery: Bool)] = []
     private var lastEnergyReading = Date.distantPast
+    private var wasOnBatteryAtLastReading = false
 
     init(monitor: BatteryMonitor, iosDevices: IOSDeviceMonitor, store: HistoryStore? = nil) {
         self.monitor = monitor
@@ -374,7 +375,12 @@ final class HistoryController: ObservableObject {
     /// every process takes a few milliseconds, once a minute.
     private func recordAppEnergy() {
         let usage = energyMeter.measure().filter { $0.value.joules >= 0.01 || $0.value.cpuSeconds >= 0.01 }
-        let onBattery = !(monitor?.battery?.isExternalPowerConnected ?? true)
+        // A reading covers the minute before it. If the power source changed in
+        // that minute, how much was on battery isn't known, so none of it counts
+        // as battery use: an undercount rather than a guess.
+        let onBatteryNow = !(monitor?.battery?.isExternalPowerConnected ?? true)
+        let onBattery = onBatteryNow && wasOnBatteryAtLastReading
+        wasOnBatteryAtLastReading = onBatteryNow
         let now = Date()
         perform { try store?.addAppUsage(usage, at: now, onBattery: onBattery) }
         recentAppUsage.append((now, usage, onBattery))

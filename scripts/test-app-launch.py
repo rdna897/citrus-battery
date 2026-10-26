@@ -20,12 +20,16 @@ def check_launch(app: Path) -> None:
         stdout = directory / "stdout.log"
         stderr = directory / "stderr.log"
         pid_file = directory / "app.pid"
-        environment = dict(os.environ, CITRUS_GUI_SMOKE_TEST="1", CITRUS_SMOKE_PID_FILE=str(pid_file))
+        # A history database of its own, so the check never touches the real one.
+        history = directory / "history.sqlite"
+        environment = dict(os.environ, CITRUS_GUI_SMOKE_TEST="1", CITRUS_SMOKE_PID_FILE=str(pid_file),
+                           CITRUS_HISTORY_PATH=str(history))
         if mode == "gui":
             # Finder launches through LaunchServices, which sends SwiftUI its
             # initial open event. Running the executable directly can omit it.
             command = ["open", "-n", "-W", "--env", "CITRUS_GUI_SMOKE_TEST=1",
                        "--env", f"CITRUS_SMOKE_PID_FILE={pid_file}",
+                       "--env", f"CITRUS_HISTORY_PATH={history}",
                        "--stdout", str(stdout), "--stderr", str(stderr), str(app)]
         else:
             command = [str(executable), "--notification-smoke-test"]
