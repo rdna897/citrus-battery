@@ -97,7 +97,8 @@ tampered feeds and archives, and performs a real replacement and relaunch.
 ## Publish
 
 The GitHub workflow tests and packages Apple Silicon and Intel builds separately
-on macOS 15 runners. The libraries are built for macOS 13 and cached per
+on macOS 26 runners, so the app is built with the macOS 26 SDK and gets the current
+macOS look; the workflow stops if the SDK is older. The libraries are built for macOS 13 and cached per
 architecture until `scripts/build-dependencies.sh` changes. Ordinary pushes and pull requests only produce workflow
 artifacts. A version tag publishes a GitHub Release after **both** builds pass:
 

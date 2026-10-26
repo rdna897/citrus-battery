@@ -21,10 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          - runner: macos-26
             arch: arm64
             launch_check: gui
-          - runner: macos-15-intel
+          - runner: macos-26-intel
             arch: x86_64
             # The hosted Intel VM's virtual GPU can abort in Metal rendering.
             # Exercise the notification startup path without requiring its GPU.
@@ -53,6 +53,11 @@ jobs:
         run: |
           test "$(uname -m)" = "$EXPECTED_ARCH"
           swift --version
+          # macOS gives an app its current look (Liquid Glass from 26) only when
+          # it's built with that SDK, so an older one would ship the old look.
+          sdk="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK $sdk"
+          test "${sdk%%.*}" -ge 26
       - name: Test
         run: swift test
       - name: Test updater signatures, installation and relaunch
