@@ -201,9 +201,33 @@ public final class HistoryStore: @unchecked Sendable {
         // before this was recorded, until `claimSleepData(for:)` assigns them.
         try addColumnIfMissing(table: "sleep_sessions", column: "mac", type: "TEXT")
         try addColumnIfMissing(table: "dark_wakes", column: "mac", type: "TEXT")
+        try migrateWakeIdentity()
         // Intel Macs don't measure energy per process, so on battery only
         // processor time can rank apps there.
         try addColumnIfMissing(table: "app_energy", column: "battery_cpu_seconds", type: "REAL NOT NULL DEFAULT 0")
+    }
+
+    /// A NULL key would let SQLite keep duplicate unknown-Mac wakes, so the
+    /// empty serial stands for unknown on disk and remains nil in the model.
+    private func migrateWakeIdentity() throws {
+        let statement = try prepare("SELECT 1 FROM pragma_table_info('dark_wakes') WHERE name = 'mac' AND pk = 1")
+        defer { sqlite3_finalize(statement) }
+        var migrated = false
+        try forEachRow(statement) { migrated = true }
+        guard !migrated else { return }
+        try transaction {
+            try execute("""
+                CREATE TABLE dark_wakes_by_mac (
+                    mac TEXT NOT NULL DEFAULT '', date REAL NOT NULL,
+                    reason TEXT NOT NULL, detail TEXT, seconds INTEGER, holders TEXT, apps TEXT,
+                    PRIMARY KEY (mac, date)
+                );
+                INSERT INTO dark_wakes_by_mac (mac, date, reason, detail, seconds, holders, apps)
+                    SELECT COALESCE(mac, ''), date, reason, detail, seconds, holders, apps FROM dark_wakes;
+                DROP TABLE dark_wakes;
+                ALTER TABLE dark_wakes_by_mac RENAME TO dark_wakes;
+                """)
+        }
     }
 
     private func addColumnIfMissing(table: String, column: String, type: String) throws {
@@ -345,7 +369,7 @@ public final class HistoryStore: @unchecked Sendable {
         try transaction {
             let insert = try prepare("""
                 INSERT INTO dark_wakes (date, reason, detail, seconds, holders, apps, mac) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(date) DO UPDATE SET
+                ON CONFLICT(mac, date) DO UPDATE SET
                     seconds = COALESCE(excluded.seconds, dark_wakes.seconds),
                     holders = COALESCE(excluded.holders, dark_wakes.holders),
                     apps = COALESCE(dark_wakes.apps, excluded.apps)
@@ -359,7 +383,7 @@ public final class HistoryStore: @unchecked Sendable {
                 bind(insert, 4, wake.seconds)
                 bind(insert, 5, Self.list(wake.holders))
                 bind(insert, 6, Self.list(wake.apps))
-                bind(insert, 7, wake.mac)
+                bind(insert, 7, wake.mac ?? "")
                 try step(insert)
             }
             try mark(loggedSessions, column: "wakes_logged")
@@ -370,13 +394,14 @@ public final class HistoryStore: @unchecked Sendable {
     /// the sessions it was read for, or, when the read `failed`, tried for.
     public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64], failed: Bool = false) throws {
         try transaction {
-            let update = try prepare("UPDATE dark_wakes SET reason = ?, apps = ? WHERE date = ?")
+            let update = try prepare("UPDATE dark_wakes SET reason = ?, apps = ? WHERE date = ? AND mac = ?")
             defer { sqlite3_finalize(update) }
             for wake in wakes {
                 sqlite3_reset(update)
                 bind(update, 1, wake.reason.rawValue)
                 bind(update, 2, Self.list(wake.apps))
                 bind(update, 3, wake.date.timeIntervalSince1970)
+                bind(update, 4, wake.mac ?? "")
                 try step(update)
             }
             try mark(loggedSessions, column: "apps_logged", value: failed ? Self.appsReadFailed : 1)
@@ -413,7 +438,7 @@ public final class HistoryStore: @unchecked Sendable {
         try locked {
             let statement = try prepare("""
                 SELECT date, reason, detail, seconds, holders, apps, mac FROM dark_wakes
-                WHERE ?1 IS NULL OR mac IS NULL OR mac = ?1 ORDER BY date
+                WHERE ?1 IS NULL OR mac = '' OR mac = ?1 ORDER BY date
                 """)
             defer { sqlite3_finalize(statement) }
             bind(statement, 1, mac)
@@ -426,7 +451,7 @@ public final class HistoryStore: @unchecked Sendable {
                     seconds: int(statement, 3),
                     holders: Self.list(text(statement, 4)),
                     apps: Self.list(text(statement, 5)),
-                    mac: text(statement, 6))
+                    mac: text(statement, 6).flatMap { $0.isEmpty ? nil : $0 })
                 if HistoryValidation.wake(wake) { result.append(wake) }
             }
             return result
@@ -437,12 +462,17 @@ public final class HistoryStore: @unchecked Sendable {
     /// then only the Mac running the app saved them.
     public func claimSleepData(for mac: String) throws {
         try transaction {
-            for table in ["sleep_sessions", "dark_wakes"] {
-                let statement = try prepare("UPDATE \(table) SET mac = ? WHERE mac IS NULL")
-                defer { sqlite3_finalize(statement) }
-                bind(statement, 1, mac)
-                try step(statement)
+            let unclaimed = try darkWakes().filter { $0.mac == nil }.map { wake in
+                var wake = wake
+                wake.mac = mac
+                return wake
             }
+            try merge(unclaimed)
+            try execute("DELETE FROM dark_wakes WHERE mac = ''")
+            let statement = try prepare("UPDATE sleep_sessions SET mac = ? WHERE mac IS NULL")
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, mac)
+            try step(statement)
         }
     }
 
@@ -821,7 +851,7 @@ public final class HistoryStore: @unchecked Sendable {
     /// more specific reason (a push notification over plain Wi-Fi), the apps of
     /// both, and anything only one of them has.
     private func merge(_ imported: [DarkWake]) throws {
-        let saved = Dictionary(try darkWakes().map { ($0.date, $0) }, uniquingKeysWith: { first, _ in first })
+        let saved = Dictionary(try darkWakes().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let statement = try prepare("""
             INSERT OR REPLACE INTO dark_wakes (date, reason, detail, seconds, holders, apps, mac)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -829,7 +859,7 @@ public final class HistoryStore: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         for wake in imported {
             var merged = wake
-            if let current = saved[wake.date] {
+            if let current = saved[wake.id] {
                 merged = current
                 if current.reason == .wireless, wake.reason == .pushNotification { merged.reason = .pushNotification }
                 merged.detail = current.detail ?? wake.detail
@@ -846,7 +876,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 4, merged.seconds)
             bind(statement, 5, Self.list(merged.holders))
             bind(statement, 6, Self.list(merged.apps))
-            bind(statement, 7, merged.mac)
+            bind(statement, 7, merged.mac ?? "")
             try step(statement)
         }
     }

@@ -68,8 +68,12 @@ public struct DarkWake: Sendable, Equatable, Codable, Identifiable {
         self.mac = mac
     }
 
-    /// Wakes are saved by time, which is unique.
-    public var id: Date { date }
+    public struct ID: Hashable, Sendable {
+        public var mac: String
+        public var date: Date
+    }
+
+    public var id: ID { ID(mac: mac ?? "", date: date) }
 
     private enum CodingKeys: String, CodingKey { case date, reason, detail, seconds, holders, apps, mac }
 

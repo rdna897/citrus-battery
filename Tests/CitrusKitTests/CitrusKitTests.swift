@@ -1716,3 +1716,52 @@ struct FakeSMC: SMCReading {
         #expect(throws: HistoryError.damagedBackup) { try store.importBackup(badWake) }
     }
 }
+
+@Suite struct WakeIdentityTests {
+    @Test func twoMacsKeepWakesAtTheSameSecond() throws {
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        let store = try HistoryStore(url: nil)
+        let first = DarkWake(date: date, reason: .wireless, seconds: 5, mac: "A")
+        let second = DarkWake(date: date, reason: .scheduledTask, seconds: 9, mac: "B")
+        #expect(first.id != second.id)
+        try store.insert([first, second], loggedSessions: [])
+        #expect(try store.darkWakes().count == 2)
+        try store.annotate([DarkWake(date: date, reason: .pushNotification, apps: ["Photos"], mac: "A")],
+                           loggedSessions: [])
+        #expect(try store.darkWakes(mac: "A").first?.reason == .pushNotification)
+        #expect(try store.darkWakes(mac: "B") == [second])
+        let source = try HistoryStore(url: nil)
+        try source.insert([DarkWake(date: date, reason: .scheduledTask, apps: ["Notes"], mac: "B")], loggedSessions: [])
+        _ = try store.importBackup(source.exportBackup())
+        #expect(try store.darkWakes().count == 2)
+        #expect(try store.darkWakes(mac: "A").first?.apps == ["Photos"])
+        #expect(try store.darkWakes(mac: "B").first?.apps == ["Notes"])
+    }
+
+    @Test func rebuildPreservesLegacyWakesAndCanReopen() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("wakes-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        #expect(sqlite3_exec(db, """
+            CREATE TABLE dark_wakes (date REAL PRIMARY KEY, reason TEXT NOT NULL, detail TEXT, mac TEXT);
+            INSERT INTO dark_wakes VALUES (1792000000, 'wireless', 'old', NULL);
+            INSERT INTO dark_wakes VALUES (1792000001, 'power', NULL, 'A');
+            """, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        do {
+            let store = try HistoryStore(url: url)
+            #expect(try store.darkWakes().count == 2)
+            #expect(try store.darkWakes().first?.detail == "old")
+            #expect(try store.darkWakes().first?.mac == nil)
+            try store.insert([DarkWake(date: Date(timeIntervalSince1970: 1792000000), reason: .power, mac: "A")],
+                             loggedSessions: [])
+            #expect(try store.darkWakes().count == 3)
+            try store.claimSleepData(for: "A")
+            #expect(try store.darkWakes().count == 2)
+            #expect(try store.darkWakes().allSatisfy { $0.mac == "A" })
+        }
+        let reopened = try HistoryStore(url: url)
+        #expect(try reopened.darkWakes().count == 2)
+    }
+}
