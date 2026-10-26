@@ -6,6 +6,8 @@ import ServiceManagement
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = AppUpdater()
+    weak var history: HistoryController?
+    private var waitingToTerminate = false
     private var defaultsObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -91,6 +93,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 window.miniaturize(nil)
             }
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let history else { return .terminateNow }
+        guard !waitingToTerminate else { return .terminateLater }
+        waitingToTerminate = true
+        history.prepareForTermination { [weak self] in self?.finishTermination(sender) }
+        // A slow import or an unavailable disk must not keep the app open.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.finishTermination(sender) }
+        return .terminateLater
+    }
+
+    private func finishTermination(_ sender: NSApplication) {
+        guard waitingToTerminate else { return }
+        waitingToTerminate = false
+        sender.reply(toApplicationShouldTerminate: true)
     }
 
     /// Closing the window leaves the menu bar item running.

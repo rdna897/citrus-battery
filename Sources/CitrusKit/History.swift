@@ -125,6 +125,12 @@ public final class HistoryStore: @unchecked Sendable {
         workQueue.async { completion(Result { try work(self) }) }
     }
 
+    /// Runs after all work already submitted, without waiting on the caller's
+    /// thread. Stop submitting new work before using this to finish quitting.
+    public func drain(completion: @escaping @Sendable () -> Void) {
+        workQueue.async(execute: completion)
+    }
+
     /// `~/Library/Application Support/Citrus Battery/history.sqlite`.
     public static var defaultURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -145,11 +151,8 @@ public final class HistoryStore: @unchecked Sendable {
         guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
             == SQLITE_OK else {
             let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "cannot open \(path)"
-            sqlite3_close(db)
             throw HistoryError.database(message)
         }
-        var ready = false
-        defer { if !ready { sqlite3_close(db) } }
         do {
             let version = try prepare("PRAGMA user_version")
             defer { sqlite3_finalize(version) }
@@ -231,7 +234,6 @@ public final class HistoryStore: @unchecked Sendable {
             CREATE INDEX IF NOT EXISTS dark_wakes_date ON dark_wakes (date);
             PRAGMA user_version = 1;
             """)
-        ready = true
     }
 
     /// A NULL key would let SQLite keep duplicate unknown-Mac wakes, so the

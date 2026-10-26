@@ -139,6 +139,39 @@ import Testing
         #expect(history.lastError != nil)
     }
 
+    @Test func quittingFlushesPowerAndDrainsAcceptedChangesWithoutBlocking() async throws {
+        let store = try HistoryStore(url: nil)
+        try store.setAutoRecord(false, deviceSerial: "M")
+        try store.insert(Self.entry("A"))
+        try store.insert(Self.entry("B"))
+        let (history, monitor, devices) = Self.controller(store: store)
+        defer { withExtendedLifetime((monitor, devices)) {} }
+        await Self.settle(store)
+        history.selectedDeviceSerial = "A"
+        await Self.settle(store)
+        let ids = Set(history.entries.map(\.id))
+        let release = Self.pause(store)
+        history.saveNow()
+        history.delete(ids: ids)
+        history.setAutoRecord(true, for: "M")
+        let started = Date()
+        await withCheckedContinuation { continuation in
+            history.prepareForTermination { continuation.resume() }
+            #expect(Date().timeIntervalSince(started) < 1)
+            // Work arriving after the barrier must not be accepted.
+            history.setAutoRecord(false, for: "M")
+            history.selectedDeviceSerial = "B"
+            history.deleteAllForSelectedDevice()
+            release.signal()
+        }
+        #expect(try store.entries(deviceSerial: "M").count == 1)
+        #expect(try store.entries(deviceSerial: "A").isEmpty)
+        #expect(try store.entries(deviceSerial: "B").count == 1)
+        #expect(try store.autoRecord(deviceSerial: "M") == true)
+        let minutes = try store.powerMinutes(since: .distantPast)
+        #expect(minutes.count == 1 && minutes.first?.averageWatts == 8)
+    }
+
     @Test func saveNowDoesNotRepeatAnUnchangedReading() async throws {
         let store = try HistoryStore(url: nil)
         try store.setAutoRecord(false, deviceSerial: "M")

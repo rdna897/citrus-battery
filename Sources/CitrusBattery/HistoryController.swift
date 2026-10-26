@@ -33,6 +33,7 @@ final class HistoryController: ObservableObject {
     @Published private(set) var sleepPeriods: [DateInterval] = []
 
     private let store: HistoryStore?
+    private var isTerminating = false
     private weak var monitor: BatteryMonitor?
     private weak var iosDevices: IOSDeviceMonitor?
     private var observers: [AnyCancellable] = []
@@ -101,6 +102,23 @@ final class HistoryController: ObservableObject {
     var thisMacSerial: String? {
         guard let monitor else { return nil }
         return monitor.macInfo.serialNumber ?? monitor.macInfo.modelIdentifier
+    }
+
+    /// Flush the partial power minute before the barrier, then stop live and
+    /// deferred callbacks from adding work behind it. No database lock is taken
+    /// on the main thread, even if an import is still running.
+    func prepareForTermination(then completion: @escaping @MainActor () -> Void) {
+        guard !isTerminating else { return }
+        if let minute = powerAggregator.flush() { savePowerMinute(minute) }
+        isTerminating = true
+        observers.removeAll()
+        pendingMeasurement?.task.cancel()
+        pendingMeasurement = nil
+        guard let store else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        store.drain { DispatchQueue.main.async { completion() } }
     }
 
     // MARK: Saving
@@ -575,7 +593,7 @@ final class HistoryController: ObservableObject {
     private func perform<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T,
                                      finally cleanup: @escaping @MainActor () -> Void = {},
                                      then completion: @escaping @MainActor (T) -> Void = { _ in }) {
-        guard let store else { cleanup(); return }
+        guard let store, !isTerminating else { cleanup(); return }
         store.enqueue(body) { [weak self] result in
             // The main queue runs these strictly in the order the work finished,
             // which separate tasks don't promise.
@@ -591,7 +609,7 @@ final class HistoryController: ObservableObject {
     }
 
     private func read<T: Sendable>(_ body: @escaping @Sendable (HistoryStore) throws -> T) async -> T? {
-        guard let store else { return nil }
+        guard let store, !isTerminating else { return nil }
         let result = await withCheckedContinuation { continuation in
             store.enqueue(body) { continuation.resume(returning: $0) }
         }

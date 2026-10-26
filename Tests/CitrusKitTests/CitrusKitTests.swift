@@ -2321,3 +2321,38 @@ struct FakeSMC: SMCReading {
         #expect(try store.insertReadingIfChanged(reading))
     }
 }
+
+@Suite struct HistoryDrainTests {
+    @Test @MainActor func barrierWaitsForQueuedWorkWithoutTakingTheStoreLock() async throws {
+        let store = try HistoryStore(url: nil)
+        let release = DispatchSemaphore(value: 0)
+        let entered = DispatchSemaphore(value: 0)
+        store.enqueue({ store in
+            try store.transaction {
+                entered.signal()
+                _ = release.wait(timeout: .now() + 5)
+                try store.insert(HistoryEntry(date: Date(), deviceType: .mac, deviceSerial: "M",
+                                              deviceName: "Mac", deviceModel: "Mac"))
+            }
+        }) { result in
+            if case .failure = result { Issue.record("Queued save failed") }
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                entered.wait()
+                continuation.resume()
+            }
+        }
+        store.enqueue({ try $0.setAutoRecord(false, deviceSerial: "M") }) { result in
+            if case .failure = result { Issue.record("Queued setting failed") }
+        }
+        let started = Date()
+        await withCheckedContinuation { continuation in
+            store.drain { continuation.resume() }
+            #expect(Date().timeIntervalSince(started) < 1)
+            release.signal()
+        }
+        #expect(try store.entries().count == 1)
+        #expect(try store.autoRecord(deviceSerial: "M") == false)
+    }
+}

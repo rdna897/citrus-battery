@@ -145,8 +145,10 @@ struct CitrusBatteryApp: App {
         let store = ProcessInfo.processInfo.environment["CITRUS_HISTORY_PATH"].flatMap {
             (try? HistoryStore(url: URL(fileURLWithPath: $0))) ?? (try? HistoryStore(url: nil))
         }
-        _history = StateObject(wrappedValue: HistoryController(monitor: monitor, iosDevices: iosDevices, store: store))
+        let history = HistoryController(monitor: monitor, iosDevices: iosDevices, store: store)
+        _history = StateObject(wrappedValue: history)
         _notifier = StateObject(wrappedValue: Notifier(monitor: monitor, iosDevices: iosDevices))
+        appDelegate.history = history
     }
 
     var body: some Scene {
