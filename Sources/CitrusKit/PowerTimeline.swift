@@ -26,6 +26,7 @@ public struct PowerMinuteAggregator: Sendable {
     private var sum = 0.0
     private var count = 0
     private var peak = 0.0
+    private var hasNewReadings = false
     private var chargePercent: Int?
     private var onAdapter = false
 
@@ -37,25 +38,26 @@ public struct PowerMinuteAggregator: Sendable {
         var finished: PowerMinute?
         if let start, start != minute {
             finished = flush()
+            self.start = nil
+            sum = 0
+            count = 0
+            peak = 0
         }
         if start == nil { start = minute }
         sum += watts
         count += 1
+        hasNewReadings = true
         peak = max(peak, watts)
         self.chargePercent = chargePercent
         self.onAdapter = onAdapter
         return finished
     }
 
-    /// The minute so far, if it has readings; starts a new one. Call before sleep.
+    /// Saves the minute so far before sleep, retaining its samples in case the
+    /// Mac wakes in the same minute. Only new readings need another save.
     public mutating func flush() -> PowerMinute? {
-        defer {
-            start = nil
-            sum = 0
-            count = 0
-            peak = 0
-        }
-        guard let start, count > 0 else { return nil }
+        guard let start, count > 0, hasNewReadings else { return nil }
+        hasNewReadings = false
         return PowerMinute(start: start, averageWatts: sum / Double(count), peakWatts: peak,
                            chargePercent: chargePercent, onAdapter: onAdapter)
     }
@@ -137,6 +139,16 @@ public struct ChargePoint: Sendable, Equatable, Identifiable {
 }
 
 public enum PowerTimeline {
+    /// A flushed minute may gain readings after a short sleep. Keep its latest
+    /// aggregate once, just as the database replaces the row with that start.
+    public static func record(_ minute: PowerMinute, in minutes: inout [PowerMinute]) {
+        if minutes.last?.start == minute.start {
+            minutes[minutes.count - 1] = minute
+        } else {
+            minutes.append(minute)
+        }
+    }
+
     /// How long saved minutes and sleeps are kept.
     public static let retention: TimeInterval = 30 * 86_400
 

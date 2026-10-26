@@ -2019,3 +2019,38 @@ struct FakeSMC: SMCReading {
         #expect(wholeInterval)
     }
 }
+
+@Suite struct PowerMinuteResumeTests {
+    @Test func sameMinuteSleepResumesTheWeightedAggregateInMemoryAndOnDisk() throws {
+        let date = Date(timeIntervalSince1970: 1_792_000_020)
+        var aggregator = PowerMinuteAggregator()
+        var minutes: [PowerMinute] = []
+        let store = try HistoryStore(url: nil)
+        func save(_ minute: PowerMinute) throws {
+            PowerTimeline.record(minute, in: &minutes)
+            try store.insert(minute)
+        }
+        _ = aggregator.add(watts: 4, at: date + 5, chargePercent: 80, onAdapter: false)
+        _ = aggregator.add(watts: 8, at: date + 10, chargePercent: 79, onAdapter: false)
+        let flushed = aggregator.flush()
+        let beforeSleep = try #require(flushed)
+        try save(beforeSleep)
+        #expect(beforeSleep.averageWatts == 6)
+        _ = aggregator.add(watts: 18, at: date + 40, chargePercent: 78, onAdapter: true)
+        let finished = aggregator.add(watts: 5, at: date + 65, chargePercent: 78, onAdapter: true)
+        let combined = try #require(finished)
+        try save(combined)
+        #expect(combined.averageWatts == 10 && combined.peakWatts == 18)
+        #expect(combined.chargePercent == 78 && combined.onAdapter)
+        #expect(minutes.count == 1)
+        #expect(try store.powerMinutes(since: date) == minutes)
+        // A longer sleep cannot emit the already saved minute a second time.
+        let nextFlushed = aggregator.flush()
+        let next = try #require(nextFlushed)
+        try save(next)
+        let afterLongSleep = aggregator.add(watts: 7, at: date + 185, chargePercent: 77, onAdapter: false)
+        #expect(afterLongSleep == nil)
+        #expect(minutes.count == 2)
+        #expect(try store.powerMinutes(since: date) == minutes)
+    }
+}

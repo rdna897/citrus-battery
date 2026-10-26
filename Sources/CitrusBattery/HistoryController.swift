@@ -417,7 +417,7 @@ final class HistoryController: ObservableObject {
 
     private func savePowerMinute(_ minute: PowerMinute) {
         perform { try $0.insert(minute) }
-        powerMinutes.append(minute)
+        PowerTimeline.record(minute, in: &powerMinutes)
         let cutoff = Date().addingTimeInterval(-PowerTimeline.retention)
         if let first = powerMinutes.first, first.start < cutoff {
             powerMinutes.removeAll { $0.start < cutoff }
@@ -435,11 +435,7 @@ final class HistoryController: ObservableObject {
             let livePeriods = self.sleepPeriods.filter { $0.start > (periods.last?.start ?? .distantPast) }
             self.powerMinutes = minutes
             for minute in liveMinutes {
-                if self.powerMinutes.last?.start == minute.start {
-                    self.powerMinutes[self.powerMinutes.count - 1] = minute
-                } else {
-                    self.powerMinutes.append(minute)
-                }
+                PowerTimeline.record(minute, in: &self.powerMinutes)
             }
             self.sleepPeriods = periods + livePeriods
             self.reloadSleepSessions {
