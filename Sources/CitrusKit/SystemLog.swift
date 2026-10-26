@@ -78,7 +78,7 @@ public enum SystemLog {
             var wake = wake
             // Power log times are whole seconds, and its durations rounded down.
             let start = wake.date.addingTimeInterval(-1)
-            let end = wake.date.addingTimeInterval(TimeInterval((wake.seconds ?? 0) + 3))
+            let end = wake.date.addingTimeInterval((TimeInterval(wake.seconds ?? 0) + 3))
             while first < events.count, events[first].date < start { first += 1 }
             var index = first
             while index < events.count, events[index].date <= end {

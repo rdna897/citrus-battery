@@ -394,16 +394,9 @@ public final class HistoryStore: @unchecked Sendable {
     /// the sessions it was read for, or, when the read `failed`, tried for.
     public func annotate(_ wakes: [DarkWake], loggedSessions: [Int64], failed: Bool = false) throws {
         try transaction {
-            let update = try prepare("UPDATE dark_wakes SET reason = ?, apps = ? WHERE date = ? AND mac = ?")
-            defer { sqlite3_finalize(update) }
-            for wake in wakes {
-                sqlite3_reset(update)
-                bind(update, 1, wake.reason.rawValue)
-                bind(update, 2, Self.list(wake.apps))
-                bind(update, 3, wake.date.timeIntervalSince1970)
-                bind(update, 4, wake.mac ?? "")
-                try step(update)
-            }
+            // A log read may have started before an import enriched these rows.
+            let saved = Set(try darkWakes().map(\.id))
+            try merge(wakes.filter { saved.contains($0.id) })
             try mark(loggedSessions, column: "apps_logged", value: failed ? Self.appsReadFailed : 1)
         }
     }
@@ -422,7 +415,11 @@ public final class HistoryStore: @unchecked Sendable {
     private static let appsReadFailed = 2
 
     private func mark(_ sessions: [Int64], column: String, value: Int = 1) throws {
-        let mark = try prepare("UPDATE sleep_sessions SET \(column) = ? WHERE id = ?")
+        let mark = try prepare("""
+            UPDATE sleep_sessions SET \(column) =
+                CASE WHEN ?1 = 1 THEN 1 WHEN \(column) = 0 THEN ?1 ELSE \(column) END
+            WHERE id = ?2
+            """)
         defer { sqlite3_finalize(mark) }
         for id in sessions {
             sqlite3_reset(mark)
@@ -867,7 +864,9 @@ public final class HistoryStore: @unchecked Sendable {
             var merged = wake
             if let current = saved[wake.id] {
                 merged = current
-                if current.reason == .wireless, wake.reason == .pushNotification { merged.reason = .pushNotification }
+                if current.reason == .other || (current.reason == .wireless && wake.reason == .pushNotification) {
+                    merged.reason = wake.reason
+                }
                 merged.detail = current.detail ?? wake.detail
                 merged.seconds = current.seconds ?? wake.seconds
                 if current.holders.isEmpty { merged.holders = wake.holders }

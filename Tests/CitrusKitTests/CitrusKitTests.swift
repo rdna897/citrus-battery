@@ -1819,3 +1819,38 @@ struct FakeSMC: SMCReading {
         #expect(try store.entries().count == 50)
     }
 }
+
+@Suite struct WakeAnnotationMergeTests {
+    @Test func staleLogReadKeepsImportedDetailsAndSuccessfulState() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let store = try HistoryStore(url: nil)
+        let base = SleepSession(start: night, end: night + 3600, startCapacity: 4000, endCapacity: 3900,
+                                fullChargeCapacity: 4500, mac: "M")
+        try store.insert(base)
+        let id = try #require(try store.sleepSessions().first?.id)
+        let stale = DarkWake(date: night + 60, reason: .wireless, apps: ["Photos"], mac: "M")
+        try store.insert([stale], loggedSessions: [id])
+        let source = try HistoryStore(url: nil)
+        var enriched = base
+        enriched.appsLogged = true
+        try source.insert(enriched)
+        try source.insert([DarkWake(date: stale.date, reason: .pushNotification, apps: ["Notes"], mac: "M")],
+                          loggedSessions: [])
+        _ = try store.importBackup(source.exportBackup())
+        try store.annotate([stale], loggedSessions: [id], failed: true)
+        #expect(try store.darkWakes().first?.reason == .pushNotification)
+        #expect(try store.darkWakes().first?.apps == ["Photos", "Notes"])
+        #expect(try store.sleepSessions().first?.appsReadFailed == false)
+        try store.annotate([DarkWake(date: stale.date, reason: .wireless, apps: ["Mail"], mac: "M")],
+                           loggedSessions: [id])
+        #expect(try store.darkWakes().first?.apps == ["Photos", "Notes", "Mail"])
+        #expect(try store.darkWakes().first?.reason == .pushNotification)
+        // Failure can be upgraded to success, but cannot undo a success.
+        try store.insert(base)
+        let otherID = try #require(try store.sleepSessions().last?.id)
+        try store.annotate([], loggedSessions: [otherID], failed: true)
+        try store.annotate([], loggedSessions: [otherID])
+        try store.annotate([], loggedSessions: [otherID], failed: true)
+        #expect(try store.sleepSessions().allSatisfy { $0.appsLogged && !$0.appsReadFailed })
+    }
+}
