@@ -13,7 +13,7 @@ is included.
 
 <p align="center">
   <a href="assets/screenshots/mac-dashboard.png">
-    <img src="assets/screenshots/mac-dashboard.png" alt="Citrus Battery's Mac dashboard with sample battery health, charge, temperature and power readings" width="1100">
+    <picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/mac-dashboard.png"><img src="assets/screenshots/mac-dashboard.png" alt="Citrus Battery's Mac dashboard with sample battery health, charge, temperature and power readings" width="1100"></picture>
   </a>
   <br>
   <em>Your Mac's battery, at a glance.</em>
@@ -48,55 +48,55 @@ Click any screenshot to see it at full resolution.
 <table>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample power readings with battery level and power use for the last 24 hours as bar charts, the Mac's sleep on a strip underneath, and a charger check for a 30 W USB-C adapter" width="100%"></a>
+      <a href="assets/screenshots/mac-power.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Sample power readings with battery level and power use for the last 24 hours as bar charts, the Mac's sleep on a strip underneath, and a charger check for a 30 W USB-C adapter" width="100%"></picture></a>
       <p><strong>Power history and charger check</strong><br><sub>See battery level and power use over time, when the Mac slept, and whether the charger is holding charging back.</sub></p>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/sleep.png"><img src="assets/screenshots/sleep.png" alt="Sample Sleep page for the last 7 days: average drain, loss per sleep and brief wakes, a chart of each night's drain per hour with one high night, the reasons the Mac woke, and a table of sleeps" width="100%"></a>
+      <a href="assets/screenshots/sleep.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/sleep.png"><img src="assets/screenshots/sleep.png" alt="Sample Sleep page for the last 7 days: average drain, loss per sleep and brief wakes, a chart of each night's drain per hour with one high night, the reasons the Mac woke, and a table of sleeps" width="100%"></picture></a>
       <p><strong>Sleep</strong><br><sub>How much charge each sleep cost, for any period, and why macOS kept waking the Mac.</sub></p>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/wake-details.png"><img src="assets/screenshots/wake-details.png" alt="Sample Wake Details for one night: 112 brief wakes, time awake, what kept the Mac awake and the apps iCloud worked for, above a table of each wake" width="100%"></a>
+      <a href="assets/screenshots/wake-details.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/wake-details.png"><img src="assets/screenshots/wake-details.png" alt="Sample Wake Details for one night: 112 brief wakes, time awake, what kept the Mac awake and the apps iCloud worked for, above a table of each wake" width="100%"></picture></a>
       <p><strong>Wake details</strong><br><sub>Every brief wake in a sleep: how long, why, and for which app.</sub></p>
     </td>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/mac-energy.png"><img src="assets/screenshots/mac-energy.png" alt="Sample Energy by App card ranking Safari, Photos, Music, Mail, Messages and Notes by energy used in the last 24 hours" width="100%"></a>
+      <a href="assets/screenshots/mac-energy.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/mac-energy.png"><img src="assets/screenshots/mac-energy.png" alt="Sample Energy by App card ranking Safari, Photos, Music, Mail, Messages and Notes by energy used in the last 24 hours" width="100%"></picture></a>
       <p><strong>Energy by app</strong><br><sub>Which apps used the most energy over the last hour, day, week or month.</sub></p>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="The menu bar with macOS's own battery icon and the charge, and below it Citrus Battery's menu with charge and health bars, battery details, an app using significant energy, two apps preventing sleep, an iPhone and iPad, and commands" width="70%"></a>
+      <a href="assets/screenshots/menu-bar.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="The menu bar with macOS's own battery icon and the charge, and below it Citrus Battery's menu with charge and health bars, battery details, an app using significant energy, two apps preventing sleep, an iPhone and iPad, and commands" width="70%"></picture></a>
       <p><strong>Menu bar</strong><br><sub>macOS's own battery icon, and a menu styled like Control Center's, with apps using significant energy or keeping the Mac awake.</sub></p>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/iphone.png"><img src="assets/screenshots/iphone.png" alt="Sample iPhone battery health and charging details, with an iPad also listed in the sidebar" width="100%"></a>
+      <a href="assets/screenshots/iphone.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/iphone.png"><img src="assets/screenshots/iphone.png" alt="Sample iPhone battery health and charging details, with an iPad also listed in the sidebar" width="100%"></picture></a>
       <p><strong>iPhone &amp; iPad</strong><br><sub>Charge, health and battery details over USB or Wi-Fi.</sub></p>
     </td>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/history.png"><img src="assets/screenshots/history.png" alt="Sample battery history with six months of health readings and a sortable records table" width="100%"></a>
+      <a href="assets/screenshots/history.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/history.png"><img src="assets/screenshots/history.png" alt="Sample battery history with six months of health readings and a sortable records table" width="100%"></picture></a>
       <p><strong>History over time</strong><br><sub>Follow battery health with automatic records and backups.</sub></p>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/lifetime.png"><img src="assets/screenshots/lifetime.png" alt="Sample battery lifetime report showing operating time, temperature extremes and calibration statistics" width="100%"></a>
+      <a href="assets/screenshots/lifetime.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/lifetime.png"><img src="assets/screenshots/lifetime.png" alt="Sample battery lifetime report showing operating time, temperature extremes and calibration statistics" width="100%"></picture></a>
       <p><strong>Battery lifetime</strong><br><sub>Explore operating hours, temperature extremes and calibration.</sub></p>
     </td>
     <td width="50%" align="center" valign="top">
-      <a href="assets/screenshots/advanced.png"><img src="assets/screenshots/advanced.png" alt="Advanced Viewer with sample Mac hardware, expanded SSD health, display and USB information" width="100%"></a>
+      <a href="assets/screenshots/advanced.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/advanced.png"><img src="assets/screenshots/advanced.png" alt="Advanced Viewer with sample Mac hardware, expanded SSD health, display and USB information" width="100%"></picture></a>
       <p><strong>Advanced hardware details</strong><br><sub>Inspect battery data, SSD health, displays and USB devices.</sub></p>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center" valign="top">
-      <a href="assets/screenshots/settings.png"><img src="assets/screenshots/settings.png" alt="Settings in the main window, laid out like System Settings, showing the menu bar items you can pick and the battery icon options" width="80%"></a>
+      <a href="assets/screenshots/settings.png"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dark/settings.png"><img src="assets/screenshots/settings.png" alt="Settings in the main window, laid out like System Settings, showing the menu bar items you can pick and the battery icon options" width="80%"></picture></a>
       <p><strong>Settings</strong><br><sub>Laid out like System Settings; pick what the menu bar shows.</sub></p>
     </td>
   </tr>

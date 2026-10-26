@@ -9,6 +9,12 @@ import SwiftUI
 enum ReadmeScreenshots {
     static let date = ISO8601DateFormatter().date(from: "2026-10-21T09:41:00Z")!
 
+    /// The appearance being rendered: light into the directory, dark into its
+    /// `dark` folder, which the README shows to readers using dark mode.
+    private static var dark = false
+    private static var appearance: NSAppearance? { NSAppearance(named: dark ? .darkAqua : .aqua) }
+    private static var colorScheme: ColorScheme { dark ? .dark : .light }
+
     static func render(to directory: URL) throws {
         _ = NSApplication.shared
         let previousApp = NSWorkspace.shared.frontmostApplication
@@ -16,7 +22,14 @@ enum ReadmeScreenshots {
         NSApp.setActivationPolicy(.accessory)
         NSApp.finishLaunching()
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.appearance = NSAppearance(named: .aqua)
+        for dark in [false, true] {
+            self.dark = dark
+            try renderSet(to: dark ? directory.appendingPathComponent("dark") : directory)
+        }
+    }
+
+    private static func renderSet(to directory: URL) throws {
+        NSApp.appearance = appearance
         UserDefaults.standard.setVolatileDomain([
             PreferenceKey.temperatureUnit: "celsius",
             PreferenceKey.capacityUnit: "milliampHours",
@@ -135,7 +148,7 @@ enum ReadmeScreenshots {
                     MenuBarLabel(inMenuBar: false)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Color.black.opacity(0.1), in: Capsule())
+                        .background(Color.primary.opacity(0.1), in: Capsule())
                     Image(systemName: "wifi")
                     Image(systemName: "switch.2")
                     Text("Wed 21 Oct  10:41")
@@ -143,18 +156,18 @@ enum ReadmeScreenshots {
                 .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity, minHeight: 30, alignment: .trailing)
-                .background(Color.white.opacity(0.55))
+                .background(ReadmeScreenshots.dark ? Color.black.opacity(0.35) : Color.white.opacity(0.55))
                 MenuBarPanel()
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color(white: 0.965))
-                        .shadow(color: .black.opacity(0.18), radius: 18, y: 8))
+                        .fill(Color(white: ReadmeScreenshots.dark ? 0.17 : 0.965))
+                        .shadow(color: .black.opacity(ReadmeScreenshots.dark ? 0.45 : 0.18), radius: 18, y: 8))
                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.08)))
+                        .strokeBorder(Color.primary.opacity(ReadmeScreenshots.dark ? 0.14 : 0.08)))
                     .padding(.trailing, 150)
             }
             .frame(width: 640)
             .padding(.bottom, 30)
-            .environment(\.colorScheme, .light)
+            .environment(\.colorScheme, ReadmeScreenshots.colorScheme)
         }
     }
 
@@ -188,9 +201,7 @@ enum ReadmeScreenshots {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         NSGraphicsContext.current!.cgContext.scaleBy(x: 2, y: 2)
-        NSGradient(starting: NSColor(red: 0.93, green: 0.96, blue: 0.89, alpha: 1),
-                   ending: NSColor(red: 0.99, green: 0.97, blue: 0.90, alpha: 1))!
-            .draw(in: NSRect(origin: .zero, size: size), angle: -35)
+        backdrop.draw(in: NSRect(origin: .zero, size: size), angle: -35)
         let fit = min((size.width - 120) / image.size.width, (size.height - 80) / image.size.height)
         let drawn = NSSize(width: image.size.width * fit, height: image.size.height * fit)
         image.draw(in: NSRect(x: (size.width - drawn.width) / 2, y: (size.height - drawn.height) / 2,
@@ -423,7 +434,7 @@ enum ReadmeScreenshots {
     /// macOS 26 SDK uses, such as the sidebar's selection, which come out black.
     private static func capture<V: View>(_ view: V, title: String, size: NSSize, scrolledTo offset: CGFloat = 0,
                                          to url: URL) throws {
-        let controller = NSHostingController(rootView: view.preferredColorScheme(.light))
+        let controller = NSHostingController(rootView: view.preferredColorScheme(colorScheme))
         if #available(macOS 14.0, *) { controller.sceneBridgingOptions = .all }
         // Keep the requested size; otherwise a long table grows the window to fit every row.
         controller.sizingOptions = []
@@ -432,7 +443,7 @@ enum ReadmeScreenshots {
         window.title = title
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = appearance
         window.setContentSize(size)
         window.center()
         window.orderFrontRegardless()
@@ -451,6 +462,15 @@ enum ReadmeScreenshots {
         print("Rendered \(url.lastPathComponent)")
     }
 
+    /// The citrus backdrop behind every image: pale lime in light mode, a deep
+    /// olive in dark mode.
+    private static var backdrop: NSGradient {
+        dark ? NSGradient(starting: NSColor(red: 0.09, green: 0.12, blue: 0.08, alpha: 1),
+                          ending: NSColor(red: 0.17, green: 0.15, blue: 0.09, alpha: 1))!
+            : NSGradient(starting: NSColor(red: 0.93, green: 0.96, blue: 0.89, alpha: 1),
+                         ending: NSColor(red: 0.99, green: 0.97, blue: 0.90, alpha: 1))!
+    }
+
     /// A restrained citrus backdrop, consistent margins and a soft window shadow.
     private static func writeFramed(_ windowImage: NSImage, to url: URL) throws {
         let size = NSSize(width: 1200, height: 960)
@@ -462,20 +482,18 @@ enum ReadmeScreenshots {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         let context = NSGraphicsContext.current!.cgContext
         context.scaleBy(x: scale, y: scale)
-        NSGradient(starting: NSColor(red: 0.93, green: 0.96, blue: 0.89, alpha: 1),
-                   ending: NSColor(red: 0.99, green: 0.97, blue: 0.90, alpha: 1))!
-            .draw(in: NSRect(origin: .zero, size: size), angle: -35)
+        backdrop.draw(in: NSRect(origin: .zero, size: size), angle: -35)
         let fit = min((size.width - 120) / windowImage.size.width, (size.height - 120) / windowImage.size.height)
         let imageSize = NSSize(width: windowImage.size.width * fit, height: windowImage.size.height * fit)
         let rect = NSRect(x: (size.width - imageSize.width) / 2, y: (size.height - imageSize.height) / 2 + 6,
                           width: imageSize.width, height: imageSize.height)
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor(red: 0.20, green: 0.27, blue: 0.15, alpha: 0.22)
+        shadow.shadowColor = dark ? NSColor(white: 0, alpha: 0.55) : NSColor(red: 0.20, green: 0.27, blue: 0.15, alpha: 0.22)
         shadow.shadowBlurRadius = 24
         shadow.shadowOffset = NSSize(width: 0, height: -12)
         shadow.set()
-        NSColor.windowBackgroundColor.setFill()
+        (dark ? NSColor(white: 0.12, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).fill()
         NSGraphicsContext.restoreGraphicsState()
         NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).addClip()
