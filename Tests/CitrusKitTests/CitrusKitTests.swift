@@ -2316,7 +2316,12 @@ struct FakeSMC: SMCReading {
         reading.date += 1
         #expect(try store.insertReadingIfChanged(reading))
         #expect(try !store.insertReadingIfChanged(reading))
-        #expect(try store.entries().count == 3)
+        // A real reading's time has a fraction of a second that doesn't survive
+        // the database unchanged; it must still count as identical.
+        reading.date = Date(timeIntervalSinceReferenceDate: 814_702_197.101_925_912_3)
+        #expect(try store.insertReadingIfChanged(reading))
+        #expect(try !store.insertReadingIfChanged(reading))
+        #expect(try store.entries().count == 4)
         reading.deviceSerial = "OTHER"
         #expect(try store.insertReadingIfChanged(reading))
     }

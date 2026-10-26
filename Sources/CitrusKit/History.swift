@@ -329,6 +329,9 @@ public final class HistoryStore: @unchecked Sendable {
         return try locked {
             if let latest = try readEntries(deviceSerial: reading.deviceSerial, latestOnly: true).first {
                 reading.id = latest.id
+                // Saving a date as seconds since 1970 and reading it back doesn't
+                // return exactly the same Date, so match times to the millisecond.
+                if abs(reading.date.timeIntervalSince(latest.date)) < 0.001 { reading.date = latest.date }
                 if reading == latest { return false }
             }
             try insert(reading)
