@@ -1765,3 +1765,57 @@ struct FakeSMC: SMCReading {
         #expect(try reopened.darkWakes().count == 2)
     }
 }
+
+@Suite struct LegacyBackupSourceTests {
+    @Test func infersOnlyAnUnambiguousMacSerial() throws {
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        for serials in [[], ["OLD"], ["OLD", "OTHER"], ["OLD", "OLD"]] as [[String]] {
+            let source = try HistoryStore(url: nil)
+            for (offset, serial) in serials.enumerated() {
+                try source.insert(HistoryEntry(date: night + Double(offset), deviceType: .mac, deviceSerial: serial,
+                                               deviceName: "Mac", deviceModel: "Mac"))
+            }
+            // An iOS entry must neither supply nor make the source Mac ambiguous.
+            try source.insert(HistoryEntry(date: night, deviceType: .iOS, deviceSerial: "PHONE",
+                                           deviceName: "Phone", deviceModel: "Phone"))
+            try source.insert(SleepSession(start: night, end: night + 3600, startCapacity: 4000,
+                                           endCapacity: 3900, fullChargeCapacity: 4500))
+            try source.insert([DarkWake(date: night + 60, reason: .wireless),
+                               DarkWake(date: night + 120, reason: .power, mac: "EXPLICIT")], loggedSessions: [])
+            let target = try HistoryStore(url: nil)
+            _ = try target.importBackup(source.exportBackup(), mac: "CURRENT")
+            let expected = Set(serials).count == 1 ? "OLD" : "CURRENT"
+            #expect(try target.sleepSessions().first?.mac == expected)
+            #expect(try target.darkWakes().map(\.mac) == [expected, "EXPLICIT"])
+        }
+    }
+}
+
+@Suite struct BackupSnapshotTests {
+    @Test func exportKeepsRelatedRowsInOneSnapshot() async throws {
+        let store = try HistoryStore(url: nil)
+        let night = Date(timeIntervalSince1970: 1_792_000_000)
+        let writer = Task.detached {
+            for offset in 0..<50 {
+                let date = night + Double(offset) * 7200
+                try store.transaction {
+                    try store.insert(HistoryEntry(date: date, deviceType: .mac, deviceSerial: "M",
+                                                   deviceName: "Mac", deviceModel: "Mac"))
+                    try store.insert(SleepSession(start: date, end: date + 3600, startCapacity: 4000,
+                                                   endCapacity: 3900, fullChargeCapacity: 4500, mac: "M"))
+                    try store.insert([DarkWake(date: date + 60, reason: .wireless, mac: "M")], loggedSessions: [])
+                }
+            }
+        }
+        for _ in 0..<50 {
+            let data = try await Task.detached { try store.exportBackup() }.value
+            let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let entries = try #require(json["entries"] as? [[String: Any]])
+            let sleeps = try #require(json["sleepSessions"] as? [[String: Any]])
+            let wakes = try #require(json["darkWakes"] as? [[String: Any]])
+            #expect(entries.count == sleeps.count && sleeps.count == wakes.count)
+        }
+        try await writer.value
+        #expect(try store.entries().count == 50)
+    }
+}

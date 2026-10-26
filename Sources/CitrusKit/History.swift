@@ -776,19 +776,23 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// JSON backup of every entry, sleep session and saved brief wake.
     public func exportBackup() throws -> Data {
+        let backup = try transaction {
+            try Backup(entries: entries(),
+                       sleepSessions: sleepSessions().reversed().map(BackupSleepSession.init),
+                       darkWakes: darkWakes())
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(Backup(entries: entries(),
-                                         sleepSessions: sleepSessions().reversed().map(BackupSleepSession.init),
-                                         darkWakes: darkWakes()))
+        return try encoder.encode(backup)
     }
 
     /// Adds what a backup holds that isn't already here: entries (same device and
-    /// time), sleep sessions (same Mac and start) and brief wakes (same time),
+    /// time), sleep sessions (same Mac and start) and brief wakes (same Mac and time),
     /// all or nothing. Sleeps and wakes already here gain what the backup knows
     /// that they don't, such as push notifications read since. Sleeps and wakes
-    /// from backups made before Macs were recorded are taken to be `mac`'s.
+    /// from older backups belong to their sole Mac entry serial, falling back
+    /// to `mac` when the backup cannot tell us which Mac made them.
     @discardableResult
     public func importBackup(_ data: Data, mac: String? = nil) throws -> BackupImport {
         let decoder = JSONDecoder()
@@ -801,15 +805,17 @@ public final class HistoryStore: @unchecked Sendable {
               (backup.sleepSessions ?? []).allSatisfy(\.isValid),
               (backup.darkWakes ?? []).allSatisfy(HistoryValidation.wake)
         else { throw HistoryError.damagedBackup }
+        let sourceMacs = Set(backup.entries.filter { $0.deviceType == .mac }.map(\.deviceSerial))
+        let sourceMac = sourceMacs.count == 1 ? sourceMacs.first : mac
         return try transaction {
             let entries = try importEntries(backup.entries)
             func key(_ session: SleepSession) -> String {
-                "\(session.mac ?? mac ?? "")|\(Int(session.start.timeIntervalSince1970))"
+                "\(session.mac ?? "")|\(Int(session.start.timeIntervalSince1970))"
             }
             var existing = Dictionary(try sleepSessions().map { (key($0), $0) }, uniquingKeysWith: { first, _ in first })
             var sessions = 0
             for var session in (backup.sleepSessions ?? []).map(\.session) {
-                session.mac = session.mac ?? mac
+                session.mac = session.mac ?? sourceMac
                 if let current = existing[key(session)] {
                     try upgrade(current, with: session)
                 } else {
@@ -820,7 +826,7 @@ public final class HistoryStore: @unchecked Sendable {
             }
             try merge((backup.darkWakes ?? []).map { wake in
                 var wake = wake
-                wake.mac = wake.mac ?? mac
+                wake.mac = wake.mac ?? sourceMac
                 return wake
             })
             return BackupImport(entries: entries, sleepSessions: sessions)
@@ -911,7 +917,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Runs `body` all or nothing, holding the lock throughout so no other
     /// thread's statements land in the middle. Transactions nest, as savepoints.
-    private func transaction<T>(_ body: () throws -> T) throws -> T {
+    func transaction<T>(_ body: () throws -> T) throws -> T {
         try locked {
             let name = "t\(transactionDepth)"
             transactionDepth += 1
