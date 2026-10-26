@@ -1649,3 +1649,14 @@ struct FakeSMC: SMCReading {
         #expect(wakes.map(\.start) == [t + 660, t + 3600])
     }
 }
+
+@Suite struct AppEnergyPeriodTests {
+    @Test func hourSelectionUsesRecentReadings() {
+        let selected = AppEnergyPeriod.hour
+        #expect(selected.duration == 3600)
+        #expect(selected.usesRecentReadings)
+        #expect(!AppEnergyPeriod.day.usesRecentReadings)
+        #expect(!AppEnergyPeriod.week.usesRecentReadings)
+        #expect(!AppEnergyPeriod.month.usesRecentReadings)
+    }
+}

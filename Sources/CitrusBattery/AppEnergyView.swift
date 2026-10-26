@@ -35,30 +35,6 @@ enum AppIdentity {
     }
 }
 
-enum AppEnergyPeriod: String, CaseIterable, Identifiable {
-    case hour, day, week, month
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .hour: "1 h"
-        case .day: "24 h"
-        case .week: "7 d"
-        case .month: "30 d"
-        }
-    }
-
-    var duration: TimeInterval {
-        switch self {
-        case .hour: 3600
-        case .day: 86_400
-        case .week: 7 * 86_400
-        case .month: 30 * 86_400
-        }
-    }
-}
-
 /// Which apps used the most energy over a period, from Citrus Battery's own
 /// once-a-minute readings.
 struct AppEnergyCard: View {
@@ -112,7 +88,7 @@ struct AppEnergyCard: View {
     }
 
     private func load() {
-        let result = history.appEnergy(since: Date().addingTimeInterval(-period.duration), onBatteryOnly: batteryOnly)
+        let result = history.appEnergy(period: period, onBatteryOnly: batteryOnly)
         apps = result.apps
         since = result.since
     }

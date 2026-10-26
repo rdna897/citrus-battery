@@ -387,11 +387,12 @@ final class HistoryController: ObservableObject {
         recentAppUsage.removeAll { now.timeIntervalSince($0.date) > 3600 }
     }
 
-    /// Each app's energy since `date`, most first, and when recording began.
+    /// Each app's energy over the period, most first, and when recording began.
     /// Up to an hour comes from the readings in memory, exactly; longer from the
     /// saved hourly totals, from the start of the hour containing `date`.
-    func appEnergy(since date: Date, onBatteryOnly: Bool) -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
-        if Date().timeIntervalSince(date) <= 3600 {
+    func appEnergy(period: AppEnergyPeriod, onBatteryOnly: Bool) -> (apps: [(app: String, usage: AppUsage)], since: Date?) {
+        let date = Date().addingTimeInterval(-period.duration)
+        if period.usesRecentReadings {
             var totals: [String: AppUsage] = [:]
             let readings = recentAppUsage.filter { $0.date > date && (!onBatteryOnly || $0.onBattery) }
             for reading in readings {

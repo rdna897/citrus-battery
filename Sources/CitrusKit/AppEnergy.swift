@@ -121,3 +121,29 @@ public struct AppEnergyMeter {
             .map { unsafeBitCast($0, to: (@convention(c) (pid_t) -> pid_t).self) }
     }()
 }
+
+public enum AppEnergyPeriod: String, CaseIterable, Identifiable {
+    case hour, day, week, month
+
+    public var id: Self { self }
+
+    public var label: String {
+        switch self {
+        case .hour: "1 h"
+        case .day: "24 h"
+        case .week: "7 d"
+        case .month: "30 d"
+        }
+    }
+
+    public var duration: TimeInterval {
+        switch self {
+        case .hour: 3600
+        case .day: 86_400
+        case .week: 7 * 86_400
+        case .month: 30 * 86_400
+        }
+    }
+    public var usesRecentReadings: Bool { self == .hour }
+}
+
