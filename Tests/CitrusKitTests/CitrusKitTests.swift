@@ -1660,3 +1660,59 @@ struct FakeSMC: SMCReading {
         #expect(!AppEnergyPeriod.month.usesRecentReadings)
     }
 }
+
+@Suite struct HistoryValidationTests {
+    @Test func rejectsExtremeCountsDurationsAndEntries() throws {
+        let store = try HistoryStore(url: nil)
+        let date = Date(timeIntervalSince1970: 1_792_000_000)
+        let session = SleepSession(start: date, end: date + 3600, startCapacity: 4000, endCapacity: 3900,
+                                   fullChargeCapacity: 4500, briefWakes: Int.max)
+        try store.insert(session)
+        #expect(try store.sleepSessions().isEmpty)
+        #expect(!HistoryValidation.session(session))
+        let wake = DarkWake(date: date, reason: .other, seconds: Int.max)
+        #expect(!HistoryValidation.wake(wake))
+        #expect(WakeBreakdown([wake, wake]).secondsAwake == Int.max)
+        #expect(SleepStats([session, session]).briefWakesPerHour?.isFinite == true)
+        var entry = HistoryEntry(date: date, deviceType: .mac, deviceSerial: "M", deviceName: "Mac",
+                                 deviceModel: "Mac", fullChargeCapacity: -1)
+        #expect(!AutoRecordPolicy.isDuplicate(entry, of: [entry]))
+        #expect(throws: HistoryError.damagedBackup) { try store.importEntries([entry]) }
+        entry.fullChargeCapacity = Int.max
+        #expect(throws: HistoryError.damagedBackup) { try store.insert(entry) }
+        entry.fullChargeCapacity = 4500
+        entry.date = Date(timeIntervalSince1970: Double.greatestFiniteMagnitude)
+        #expect(throws: HistoryError.damagedBackup) { try store.importEntries([entry]) }
+        #expect(try store.entries().isEmpty)
+    }
+
+    @Test func importAndLoadUseTheSameBounds() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("bounds-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try HistoryStore(url: url)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, """
+            INSERT INTO entries (date, device_type, device_serial, device_name, device_model, full_charge_capacity, data_version)
+            VALUES (1792000000, 'mac', 'M', 'Mac', 'Mac', -1, 1);
+            INSERT INTO sleep_sessions (start, end, start_capacity, end_capacity, full_charge_capacity, brief_wakes)
+            VALUES (1792000000, 1792003600, 9223372036854775807, -1, 4500, 9223372036854775807);
+            INSERT INTO dark_wakes (date, reason, seconds) VALUES (1792000000, 'other', 9223372036854775807);
+            """, nil, nil, nil) == SQLITE_OK)
+        #expect(try store.entries().isEmpty)
+        #expect(try store.sleepSessions().isEmpty)
+        #expect(try store.darkWakes().isEmpty)
+        let bad = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "sleepSessions":[{"start":"2026-01-02T00:00:00Z","end":"2026-01-02T08:00:00Z",
+              "startCapacity":4000,"endCapacity":3900,"fullChargeCapacity":4500,"briefWakes":9223372036854775807}]}
+            """#.utf8)
+        #expect(throws: HistoryError.damagedBackup) { try store.importBackup(bad) }
+        let badWake = Data(#"""
+            {"format":"citrus-battery-history","version":2,"entries":[],
+             "darkWakes":[{"date":"2026-01-02T00:00:00Z","reason":"other","seconds":9223372036854775807}]}
+            """#.utf8)
+        #expect(throws: HistoryError.damagedBackup) { try store.importBackup(badWake) }
+    }
+}

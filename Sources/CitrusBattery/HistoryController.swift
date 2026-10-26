@@ -323,7 +323,7 @@ final class HistoryController: ObservableObject {
                 // `log` searches as little as possible. A read that fails or
                 // times out isn't retried, so it can't repeat its cost.
                 let text = SystemLog.read(from: first.date.addingTimeInterval(-5),
-                                          to: last.date.addingTimeInterval(TimeInterval((last.seconds ?? 0) + 10)))
+                                          to: last.date.addingTimeInterval((TimeInterval(last.seconds ?? 0) + 10)))
                 let annotated = text.map { SystemLog.annotate(during, with: SystemLog.parse($0)) } ?? []
                 await MainActor.run { [weak self] in
                     self?.perform { try store.annotate(annotated, loggedSessions: [session.id], failed: text == nil) }

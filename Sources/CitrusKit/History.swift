@@ -73,7 +73,7 @@ public enum HistoryError: Error, LocalizedError, Equatable {
         switch self {
         case let .database(message): "History database error: \(message)"
         case .unreadableBackup: "This file isn't a Citrus Battery history backup."
-        case .damagedBackup: "This backup has damaged sleep records, so nothing was imported."
+        case .damagedBackup: "This backup has damaged records, so nothing was imported."
         }
     }
 }
@@ -89,7 +89,9 @@ public enum AutoRecordPolicy {
     /// has the same cycle count and a full-charge capacity within ±5%.
     public static func isDuplicate(_ candidate: HistoryEntry, of existing: [HistoryEntry],
                                    calendar: Calendar = .current) -> Bool {
-        existing.contains { entry in
+        guard HistoryValidation.entry(candidate) else { return false }
+        return existing.contains { entry in
+            guard HistoryValidation.entry(entry) else { return false }
             guard calendar.isDate(entry.date, inSameDayAs: candidate.date),
                   entry.cycleCount == candidate.cycleCount
             else { return false }
@@ -231,7 +233,8 @@ public final class HistoryStore: @unchecked Sendable {
 
     @discardableResult
     public func insert(_ entry: HistoryEntry) throws -> Int64 {
-        try locked {
+        guard HistoryValidation.entry(entry) else { throw HistoryError.damagedBackup }
+        return try locked {
             let statement = try prepare("""
                 INSERT INTO entries (date, device_type, device_serial, device_name, device_model, os_version,
                     battery_serial, cycle_count, design_capacity, full_charge_capacity, data_version, comment)
@@ -267,7 +270,7 @@ public final class HistoryStore: @unchecked Sendable {
 
             var result: [HistoryEntry] = []
             try forEachRow(statement) {
-                result.append(HistoryEntry(
+                let entry = HistoryEntry(
                     id: sqlite3_column_int64(statement, 0),
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
                     deviceType: HistoryEntry.DeviceType(rawValue: text(statement, 2) ?? "") ?? .mac,
@@ -281,7 +284,8 @@ public final class HistoryStore: @unchecked Sendable {
                     fullChargeCapacity: int(statement, 10),
                     dataVersion: int(statement, 11) ?? 1,
                     comment: text(statement, 12)
-                ))
+                )
+                if HistoryValidation.entry(entry) { result.append(entry) }
             }
             return result
         }
@@ -415,14 +419,15 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 1, mac)
             var result: [DarkWake] = []
             try forEachRow(statement) {
-                result.append(DarkWake(
+                let wake = DarkWake(
                     date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
                     reason: text(statement, 1).flatMap(WakeReason.init(rawValue:)) ?? .other,
                     detail: text(statement, 2),
                     seconds: int(statement, 3),
                     holders: Self.list(text(statement, 4)),
                     apps: Self.list(text(statement, 5)),
-                    mac: text(statement, 6)))
+                    mac: text(statement, 6))
+                if HistoryValidation.wake(wake) { result.append(wake) }
             }
             return result
         }
@@ -465,11 +470,7 @@ public final class HistoryStore: @unchecked Sendable {
             bind(statement, 1, mac)
             var result: [SleepSession] = []
             try forEachRow(statement) {
-                // Skip rows that can't be shown, such as one saved from a damaged
-                // backup before backups were checked.
-                guard sqlite3_column_double(statement, 2) > sqlite3_column_double(statement, 1),
-                      (int(statement, 5) ?? 0) > 0 else { return }
-                result.append(SleepSession(
+                let session = SleepSession(
                     id: sqlite3_column_int64(statement, 0),
                     start: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
                     end: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
@@ -480,7 +481,8 @@ public final class HistoryStore: @unchecked Sendable {
                     wakesLogged: int(statement, 7) == 1,
                     appsLogged: (int(statement, 8) ?? 0) != 0,
                     appsReadFailed: int(statement, 8) == Self.appsReadFailed,
-                    mac: text(statement, 9)))
+                    mac: text(statement, 9))
+                if HistoryValidation.session(session) { result.append(session) }
             }
             return result
         }
@@ -721,18 +723,7 @@ public final class HistoryStore: @unchecked Sendable {
             mac = session.mac
         }
 
-        /// Whether the session makes sense: it ends after it starts, and its
-        /// capacities can be divided by and compared. A hand-edited or damaged
-        /// backup could otherwise save a session that can't be shown.
-        var isValid: Bool {
-            start.timeIntervalSince1970.isFinite && end.timeIntervalSince1970.isFinite && end > start
-                && fullChargeCapacity > 0 && (0...Self.maximumCapacity).contains(startCapacity)
-                && (0...Self.maximumCapacity).contains(endCapacity)
-                && fullChargeCapacity <= Self.maximumCapacity && (briefWakes ?? 0) >= 0
-        }
-
-        /// Well above any Mac battery (mAh), to catch nonsense rather than to judge.
-        static let maximumCapacity = 100_000
+        var isValid: Bool { HistoryValidation.session(session) }
 
         var session: SleepSession {
             SleepSession(start: start, end: end, startCapacity: startCapacity, endCapacity: endCapacity,
@@ -776,8 +767,9 @@ public final class HistoryStore: @unchecked Sendable {
               backup.format == "citrus-battery-history"
         else { throw HistoryError.unreadableBackup }
         // Check everything before writing anything, so a bad backup changes nothing.
-        guard (backup.sleepSessions ?? []).allSatisfy(\.isValid),
-              (backup.darkWakes ?? []).allSatisfy({ $0.date.timeIntervalSince1970.isFinite && ($0.seconds ?? 0) >= 0 })
+        guard backup.entries.allSatisfy(HistoryValidation.entry),
+              (backup.sleepSessions ?? []).allSatisfy(\.isValid),
+              (backup.darkWakes ?? []).allSatisfy(HistoryValidation.wake)
         else { throw HistoryError.damagedBackup }
         return try transaction {
             let entries = try importEntries(backup.entries)
@@ -863,6 +855,7 @@ public final class HistoryStore: @unchecked Sendable {
     /// and second). Returns the number added.
     @discardableResult
     public func importEntries(_ newEntries: [HistoryEntry]) throws -> Int {
+        guard newEntries.allSatisfy(HistoryValidation.entry) else { throw HistoryError.damagedBackup }
         func key(_ entry: HistoryEntry) -> String {
             "\(entry.deviceSerial)|\(Int(entry.date.timeIntervalSince1970))"
         }

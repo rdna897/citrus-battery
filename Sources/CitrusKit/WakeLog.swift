@@ -135,7 +135,7 @@ public enum WakeLog {
                 recent = []
                 wakes.append(wake)
                 // Logged seconds are rounded down, and assertions can trail by a moment.
-                awakeUntil = date.addingTimeInterval(TimeInterval((wake.seconds ?? 0) + 2))
+                awakeUntil = date.addingTimeInterval((TimeInterval(wake.seconds ?? 0) + 2))
             case "Assertions":
                 guard let holder = assertionHolder(in: message) else { break }
                 guard let until = awakeUntil, date <= until else {
@@ -252,7 +252,10 @@ public struct WakeBreakdown: Sendable, Equatable {
             .sorted { ($0.count, $1.reason.rawValue) > ($1.count, $0.reason.rawValue) }
         tasks = Self.ranked(wakes.filter { $0.reason == .scheduledTask }.compactMap(\.detail))
         let timed = wakes.compactMap(\.seconds)
-        secondsAwake = timed.reduce(0, +)
+        secondsAwake = timed.reduce(0) { total, seconds in
+            let (sum, overflow) = total.addingReportingOverflow(max(seconds, 0))
+            return overflow ? Int.max : sum
+        }
         timedWakes = timed.count
         holders = Self.ranked(wakes.flatMap(\.holders))
         apps = Self.ranked(wakes.flatMap(\.apps))

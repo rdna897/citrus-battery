@@ -54,7 +54,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
 
     /// Charge lost as a fraction of a full charge.
     public var lossFraction: Double {
-        Double(startCapacity - endCapacity) / Double(fullChargeCapacity)
+        (Double(startCapacity) - Double(endCapacity)) / Double(fullChargeCapacity)
     }
 
     /// Fraction of a full charge lost per hour asleep.
@@ -74,7 +74,7 @@ public struct SleepSession: Sendable, Equatable, Identifiable {
               !before.isExternalPowerConnected, !after.isExternalPowerConnected,
               let start = before.currentCapacity, let end = after.currentCapacity,
               let full = after.fullChargeCapacity ?? before.fullChargeCapacity, full > 0,
-              Double(end - start) <= Double(full) * Self.restingRise
+              (Double(end) - Double(start)) <= Double(full) * Self.restingRise
         else { return nil }
         self.init(start: sleptAt, end: wokeAt, startCapacity: start, endCapacity: min(end, start),
                   fullChargeCapacity: full)
@@ -144,7 +144,7 @@ public struct SleepStats: Sendable, Equatable {
         let counted = sessions.filter { $0.briefWakes != nil }
         let countedHours = counted.map(\.hours).reduce(0, +)
         briefWakesPerHour = countedHours > 0
-            ? Double(counted.compactMap(\.briefWakes).reduce(0, +)) / countedHours : nil
+            ? counted.compactMap(\.briefWakes).reduce(0.0) { $0 + Double($1) } / countedHours : nil
         highLossCount = sessions.filter(\.isHighLoss).count
     }
 }
