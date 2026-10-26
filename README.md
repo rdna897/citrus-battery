@@ -102,6 +102,70 @@ Click any screenshot to see it at full resolution.
   </tr>
 </table>
 
+The screenshots above follow your GitHub theme. To see them in the other appearance:
+
+<details>
+<summary><strong>Dark mode</strong></summary>
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/mac-dashboard.png"><img src="assets/screenshots/dark/mac-dashboard.png" alt="This Mac, dark mode" width="100%"></a><br><sub>This Mac</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/mac-power.png"><img src="assets/screenshots/dark/mac-power.png" alt="Power history and charger check, dark mode" width="100%"></a><br><sub>Power history and charger check</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/sleep.png"><img src="assets/screenshots/dark/sleep.png" alt="Sleep, dark mode" width="100%"></a><br><sub>Sleep</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/wake-details.png"><img src="assets/screenshots/dark/wake-details.png" alt="Wake details, dark mode" width="100%"></a><br><sub>Wake details</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/mac-energy.png"><img src="assets/screenshots/dark/mac-energy.png" alt="Energy by app, dark mode" width="100%"></a><br><sub>Energy by app</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/menu-bar.png"><img src="assets/screenshots/dark/menu-bar.png" alt="Menu bar, dark mode" width="100%"></a><br><sub>Menu bar</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/iphone.png"><img src="assets/screenshots/dark/iphone.png" alt="iPhone &amp; iPad, dark mode" width="100%"></a><br><sub>iPhone &amp; iPad</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/history.png"><img src="assets/screenshots/dark/history.png" alt="History over time, dark mode" width="100%"></a><br><sub>History over time</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/lifetime.png"><img src="assets/screenshots/dark/lifetime.png" alt="Battery lifetime, dark mode" width="100%"></a><br><sub>Battery lifetime</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/advanced.png"><img src="assets/screenshots/dark/advanced.png" alt="Advanced hardware details, dark mode" width="100%"></a><br><sub>Advanced hardware details</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/dark/settings.png"><img src="assets/screenshots/dark/settings.png" alt="Settings, dark mode" width="100%"></a><br><sub>Settings</sub></td>
+  </tr>
+</table>
+
+</details>
+
+<details>
+<summary><strong>Light mode</strong></summary>
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/mac-dashboard.png"><img src="assets/screenshots/mac-dashboard.png" alt="This Mac, light mode" width="100%"></a><br><sub>This Mac</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/mac-power.png"><img src="assets/screenshots/mac-power.png" alt="Power history and charger check, light mode" width="100%"></a><br><sub>Power history and charger check</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/sleep.png"><img src="assets/screenshots/sleep.png" alt="Sleep, light mode" width="100%"></a><br><sub>Sleep</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/wake-details.png"><img src="assets/screenshots/wake-details.png" alt="Wake details, light mode" width="100%"></a><br><sub>Wake details</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/mac-energy.png"><img src="assets/screenshots/mac-energy.png" alt="Energy by app, light mode" width="100%"></a><br><sub>Energy by app</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/menu-bar.png"><img src="assets/screenshots/menu-bar.png" alt="Menu bar, light mode" width="100%"></a><br><sub>Menu bar</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/iphone.png"><img src="assets/screenshots/iphone.png" alt="iPhone &amp; iPad, light mode" width="100%"></a><br><sub>iPhone &amp; iPad</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/history.png"><img src="assets/screenshots/history.png" alt="History over time, light mode" width="100%"></a><br><sub>History over time</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/lifetime.png"><img src="assets/screenshots/lifetime.png" alt="Battery lifetime, light mode" width="100%"></a><br><sub>Battery lifetime</sub></td>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/advanced.png"><img src="assets/screenshots/advanced.png" alt="Advanced hardware details, light mode" width="100%"></a><br><sub>Advanced hardware details</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><a href="assets/screenshots/settings.png"><img src="assets/screenshots/settings.png" alt="Settings, light mode" width="100%"></a><br><sub>Settings</sub></td>
+  </tr>
+</table>
+
+</details>
+
 ## Features
 
 **Your Mac's battery**
